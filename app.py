@@ -1,6 +1,6 @@
 # app.py
 # This is the main file for the Streamlit web application.
-# This version adds more graphs and an editable, downloadable transaction table.
+# This version has a robust UI, correct processing calls, and visual feedback.
 
 import streamlit as st
 import pandas as pd
@@ -36,6 +36,13 @@ st.markdown("""
         width: 100%;
         border-radius: 10px;
     }
+    .gif-container {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        height: 50vh;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -48,6 +55,9 @@ if 'uploaded_file_obj' not in st.session_state:
     st.session_state.uploaded_file_obj = None
 if 'error_message' not in st.session_state:
     st.session_state.error_message = None
+if 'processing' not in st.session_state:
+    st.session_state.processing = False
+
 
 @st.cache_data
 def convert_df_to_csv(df):
@@ -58,7 +68,24 @@ def convert_df_to_csv(df):
 with st.sidebar:
     st.title("Dhanrakshak 📊")
     st.write("Your personal finance dashboard.")
+    
+    st.header("1. AI Configuration")
+    ai_provider = st.radio(
+        "Select AI Provider", 
+        ("Local Server", "Gemini API"),
+        help="Use a local model for 100% privacy or Google's Gemini API for power."
+    )
+    
+    api_config = {}
+    if ai_provider == "Local Server":
+        api_config['url'] = st.text_input("Local Server URL", "http://localhost:1234/v1/chat/completions")
+    else: # Gemini API
+        api_config['key'] = st.text_input("Gemini API Key", type="password")
 
+    st.header("2. Your Information")
+    account_holder_name = st.text_input("Your Full Name (as in statement)", value="Neelaksh Saxena", help="This helps identify self-transfers accurately.")
+
+    st.header("3. Upload Statement")
     uploaded_file = st.file_uploader(
         "Upload your bank statement (.txt or .csv)",
         type=['txt', 'csv'],
@@ -67,65 +94,76 @@ with st.sidebar:
 
     # If a new file is uploaded, store it and clear old results/errors
     if uploaded_file is not None:
-        if st.session_state.uploaded_file_obj is None or uploaded_file.name != st.session_state.uploaded_file_obj.name:
+        if st.session_state.get('uploaded_file_obj') is None or uploaded_file.name != st.session_state.uploaded_file_obj.name:
             st.session_state.uploaded_file_obj = uploaded_file
             st.session_state.processed_data = None
             st.session_state.edited_data = None
-            st.session_state.error_message = None # Clear previous errors
+            st.session_state.error_message = None
 
     # If a file is ready, show its name and the "Process" button
-    if st.session_state.uploaded_file_obj is not None:
+    if st.session_state.get('uploaded_file_obj') is not None:
         st.success(f"File '{st.session_state.uploaded_file_obj.name}' ready.")
         if st.button("Process Statement", type="primary"):
-            st.session_state.error_message = None # Clear previous errors before processing
-            with st.status("Analyzing your statement...", expanded=True) as status:
-                try:
-                    df = process_statement(st.session_state.uploaded_file_obj, status)
-                    st.session_state.processed_data = df
-                    st.session_state.edited_data = df.copy() # Initialize edited_data
-                    status.update(label="Analysis complete!", state="complete", expanded=False)
-                    time.sleep(1)
-                except Exception as e:
-                    # Store the error message in the session state
-                    st.session_state.error_message = str(e)
-                    status.update(label=f"Processing failed!", state="error")
-                    st.session_state.processed_data = None
-            st.rerun()
-
-    if st.session_state.processed_data is not None or st.session_state.error_message is not None:
-        if st.button("Clear Data and Start Over"):
-            st.session_state.processed_data = None
-            st.session_state.edited_data = None
-            st.session_state.uploaded_file_obj = None
+            st.session_state.processing = True
             st.session_state.error_message = None
+            st.session_state.processed_data = None
+            st.rerun() # Rerun to show the loading GIF
+
+    if st.session_state.get('processed_data') is not None or st.session_state.get('error_message') is not None:
+        if st.button("Clear Data and Start Over"):
+            # Clear all relevant session state keys
+            for key in ['processed_data', 'edited_data', 'uploaded_file_obj', 'error_message', 'processing']:
+                if key in st.session_state:
+                    del st.session_state[key]
             st.rerun()
 
 # --- Main Page Display ---
-# First, check if there's an error to display
-if st.session_state.error_message:
-    st.error(f"An error occurred: {st.session_state.error_message}")
-    st.warning("Please check the file format and try again.")
 
-elif st.session_state.processed_data is None:
-    # --- Welcome Page ---
-    st.header("Welcome to Dhanrakshak!")
-    st.subheader("Analyze Your Finances Intelligently")
-    st.markdown("""
-    **Get started in 3 simple steps:**
+# This container will hold our GIFs or the welcome message
+main_placeholder = st.empty()
 
-    1.  **Upload your statement** using the uploader on the left.
-    2.  **Click 'Process Statement'** to begin the analysis.
-    3.  **Explore your finances!** The dashboard will appear here.
-    """)
+if st.session_state.get('processing'):
+    with main_placeholder.container():
+        st.markdown("<div class='gif-container'><img src='https://media.tenor.com/Un_bT5R7i-8AAAAC/yibo-wangyibo.gif' width='200'><h3 style='text-align: center;'>Analyzing your statement...</h3></div>", unsafe_allow_html=True)
+    
+    try:
+        df = process_statement(st.session_state.uploaded_file_obj, account_holder_name, ai_provider, api_config)
+        st.session_state.processed_data = df
+        st.session_state.edited_data = df.copy()
+        st.session_state.processing = False
+        
+        # Show the "Done" GIF briefly
+        with main_placeholder.container():
+            st.markdown("<div class='gif-container'><img src='https://media.tenor.com/A15iB2OL_n4AAAAC/done-finished.gif' width='200'></div>", unsafe_allow_html=True)
+        time.sleep(2)
+        st.rerun()
+
+    except Exception as e:
+        st.session_state.error_message = str(e)
+        st.session_state.processing = False
+        st.rerun()
+
+elif st.session_state.get('error_message'):
+    # --- ERROR SCREEN ---
+    with main_placeholder.container():
+        st.markdown("<div class='gif-container'><img src='https://media.tenor.com/fY9_t4Imu-4AAAAC/epikube-headbang.gif' width='200'></div>", unsafe_allow_html=True)
+        st.error(f"An error occurred: {st.session_state.error_message}")
+        st.warning("Please check your settings on the left and try again.")
+
+elif st.session_state.get('processed_data') is None:
+    with main_placeholder.container():
+        st.header("Welcome to Dhanrakshak!")
+        st.subheader("Analyze Your Finances Intelligently")
+        st.markdown("""
+        **Get started in 3 simple steps:**
+
+        1.  Configure your AI Provider and enter your name on the left.
+        2.  Upload your statement.
+        3.  Click 'Process Statement' to begin the analysis.
+        """)
 else:
     # --- Dashboard View ---
-    # Use original data for analytics, and edited_data for the table
     df = st.session_state.processed_data
-
-    # Defensive check: if edited_data is missing or got cleared, re-initialize it
-    if 'edited_data' not in st.session_state or st.session_state.edited_data is None:
-        st.session_state.edited_data = df.copy()
-
     st.header("Financial Overview")
     total_income = df['credit'].sum()
     total_expenses = df['debit'].sum()
@@ -143,10 +181,8 @@ else:
     if expense_df.empty:
         st.info("No expenses found in this statement.")
     else:
-        # --- Visualization Section ---
         col1, col2 = st.columns(2)
         with col1:
-            # 1. Pie Chart for Expense Categories
             expense_by_category = expense_df.groupby('category')['debit'].sum().reset_index().sort_values('debit', ascending=False)
             fig_pie = px.pie(
                 expense_by_category, names='category', values='debit',
@@ -158,7 +194,6 @@ else:
             st.plotly_chart(fig_pie, use_container_width=True)
 
         with col2:
-            # 2. Bar Chart for Payment Methods (Sorted)
             payment_method_expenses = expense_df.groupby('payment_method')['debit'].sum().sort_values(ascending=True).reset_index()
             fig_bar = px.bar(
                 payment_method_expenses, y='payment_method', x='debit',
@@ -168,7 +203,6 @@ else:
             fig_bar.update_layout(title_x=0.5, yaxis_title=None)
             st.plotly_chart(fig_bar, use_container_width=True)
             
-        # 3. Daily Spending Line Chart
         daily_expenses = expense_df.groupby(df['date'].dt.date)['debit'].sum().reset_index()
         fig_line = px.line(
             daily_expenses, x='date', y='debit',
@@ -178,49 +212,30 @@ else:
         fig_line.update_layout(title_x=0.5)
         st.plotly_chart(fig_line, use_container_width=True)
 
-
     st.markdown("---")
     st.header("Transaction Details")
     st.write("You can edit the 'remark' column below to add your own notes.")
     
-    # --- Editable Data Table ---
-    # Define the columns to display in the new, cleaner table
-    display_cols = ['date', 'merchant', 'debit', 'credit', 'category', 'remark']
-    # IMPORTANT: Check against the edited_data dataframe's columns
-    visible_cols = [col for col in display_cols if col in st.session_state.edited_data.columns]
+    if 'edited_data' not in st.session_state or st.session_state.edited_data is None:
+        st.session_state.edited_data = df.copy()
 
-    # The data editor now modifies the session state directly
+    visible_cols = ['date', 'merchant', 'debit', 'credit', 'category', 'remark']
     edited_df_from_editor = st.data_editor(
         st.session_state.edited_data,
         column_config={
-            "remark": st.column_config.TextColumn(
-                "Remarks (Editable)",
-                help="Add your personal notes for this transaction",
-                max_chars=100,
-            ),
-            "debit": st.column_config.NumberColumn(
-                "Debit (₹)", format="₹ %.2f"
-            ),
-            "credit": st.column_config.NumberColumn(
-                "Credit (₹)", format="₹ %.2f"
-            ),
-            # Hide other columns from the editor view but keep them in the dataframe
-            "description": None,
-            "payment_method": None,
-            "gateway": None,
+            "remark": st.column_config.TextColumn("Remarks (Editable)", max_chars=100),
+            "debit": st.column_config.NumberColumn("Debit (₹)", format="₹ %.2f"),
+            "credit": st.column_config.NumberColumn("Credit (₹)", format="₹ %.2f"),
+            "description": None, "payment_method": None, "gateway": None,
         },
-        column_order=visible_cols, # Control which columns are visible and in what order
-        use_container_width=True,
-        key="data_editor"
+        column_order=[col for col in visible_cols if col in st.session_state.edited_data.columns],
+        use_container_width=True, key="data_editor"
     )
-    
-    # Persist edits back to session state to make them sticky
     st.session_state.edited_data = edited_df_from_editor
 
-    # --- Save and Download Button ---
     st.download_button(
         label="Download Updated Statement",
-        data=convert_df_to_csv(st.session_state.edited_data), # Download the latest edited data
+        data=convert_df_to_csv(st.session_state.edited_data),
         file_name=f"edited_{st.session_state.uploaded_file_obj.name}.csv",
         mime="text/csv",
         help="Saves your edited remarks to a new CSV file."
