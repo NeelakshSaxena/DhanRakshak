@@ -2,3 +2,6 @@ venv/
 .env
 venv
 __pycache__
+
+# CSV files (bank statements and temporary data)
+*.csv
