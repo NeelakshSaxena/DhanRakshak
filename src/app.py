@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 import os
 from user_mapping_store import load_user_mappings, save_user_mapping
+from transaction_modes import summarize_modes
 
 # Import the processor function
 from processor import process_statement
@@ -220,6 +221,24 @@ else:
     st.markdown("---")
     st.header("Expense Analysis")
     expense_df = df[df['debit'] > 0].copy()
+
+    if 'transaction_mode' in df.columns:
+        mode_summary_all = summarize_modes(df, amount_col='debit')
+        detected_modes = mode_summary_all['transaction_mode'].tolist() if not mode_summary_all.empty else []
+        st.subheader("Detected India Transaction Modes")
+        if detected_modes:
+            st.write(", ".join(detected_modes))
+        else:
+            st.info("No transaction modes could be derived from this statement.")
+
+    if 'mode_confidence' in df.columns:
+        low_conf_count = int((df['mode_confidence'] == 'Low').sum())
+        med_conf_count = int((df['mode_confidence'] == 'Medium').sum())
+        high_conf_count = int((df['mode_confidence'] == 'High').sum())
+        c1, c2, c3 = st.columns(3)
+        c1.metric("High Confidence Rows", f"{high_conf_count}")
+        c2.metric("Medium Confidence Rows", f"{med_conf_count}")
+        c3.metric("Low Confidence Rows", f"{low_conf_count}")
     
     if expense_df.empty:
         st.info("No expenses found in this statement.")
@@ -294,6 +313,41 @@ else:
             fig_income_expense.update_layout(title_x=0.5, showlegend=False)
             st.plotly_chart(fig_income_expense, use_container_width=True)
 
+        if 'transaction_type' in expense_df.columns:
+            tx_type_df = expense_df.copy()
+            tx_type_df['transaction_type'] = tx_type_df['transaction_type'].replace('', pd.NA).fillna('Other')
+            tx_split = (
+                tx_type_df.groupby('transaction_type', as_index=False)['debit']
+                .sum()
+                .sort_values('debit', ascending=False)
+            )
+            if not tx_split.empty:
+                fig_tx_split = px.pie(
+                    tx_split,
+                    names='transaction_type',
+                    values='debit',
+                    title='Spend Split by Transaction Type (UPI vs POS vs Other)',
+                    hole=0.35
+                )
+                fig_tx_split.update_traces(textposition='inside', textinfo='percent+label')
+                fig_tx_split.update_layout(title_x=0.5)
+                st.plotly_chart(fig_tx_split, use_container_width=True)
+
+        if 'transaction_mode' in expense_df.columns:
+            mode_spend = summarize_modes(expense_df, amount_col='debit')
+            if not mode_spend.empty:
+                fig_mode_spend = px.bar(
+                    mode_spend,
+                    x='amount',
+                    y='transaction_mode',
+                    orientation='h',
+                    title='Spend by India Transaction Mode',
+                    labels={'amount': 'Spend (₹)', 'transaction_mode': 'Transaction Mode'},
+                    text_auto='.2s'
+                )
+                fig_mode_spend.update_layout(title_x=0.5, yaxis={'categoryorder': 'total ascending'})
+                st.plotly_chart(fig_mode_spend, use_container_width=True)
+
         balance_curve_df = viz_df.dropna(subset=['date_dt']).copy()
         if 'closing_balance' in balance_curve_df.columns:
             balance_curve_df['closing_balance'] = pd.to_numeric(balance_curve_df['closing_balance'], errors='coerce')
@@ -317,11 +371,13 @@ else:
     if 'edited_data' not in st.session_state or st.session_state.edited_data is None:
         st.session_state.edited_data = df.copy()
 
-    visible_cols = ['date', 'merchant', 'debit', 'credit', 'category', 'remark']
+    visible_cols = ['date', 'merchant', 'transaction_mode', 'mode_confidence', 'debit', 'credit', 'category', 'remark']
     edited_df_from_editor = st.data_editor(
         st.session_state.edited_data,
         column_config={
             "remark": st.column_config.TextColumn("Remarks (Editable)", max_chars=100),
+            "transaction_mode": st.column_config.TextColumn("Transaction Mode", disabled=True),
+            "mode_confidence": st.column_config.TextColumn("Mode Confidence", disabled=True),
             "debit": st.column_config.NumberColumn("Debit (₹)", format="₹ %.2f"),
             "credit": st.column_config.NumberColumn("Credit (₹)", format="₹ %.2f"),
             "description": None, "payment_method": None, "gateway": None,
