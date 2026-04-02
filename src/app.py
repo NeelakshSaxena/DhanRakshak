@@ -8,6 +8,7 @@ import plotly.express as px
 import time
 from pathlib import Path
 import os
+from user_mapping_store import load_user_mappings, save_user_mapping
 
 # Import the processor function
 from processor import process_statement
@@ -195,15 +196,26 @@ elif st.session_state.get('processed_data') is None:
 else:
     # --- Dashboard View ---
     df = st.session_state.processed_data
+
+    # Prepare date/balance helper columns for visualizations.
+    viz_df = df.copy()
+    viz_df['date_dt'] = pd.to_datetime(viz_df.get('date'), errors='coerce')
+
     st.header("Financial Overview")
     total_income = df['credit'].sum()
     total_expenses = df['debit'].sum()
     net_savings = total_income - total_expenses
+
+    balance_series = pd.to_numeric(viz_df.get('closing_balance'), errors='coerce').dropna()
+    current_balance = balance_series.iloc[-1] if not balance_series.empty else 0.0
+    statement_closing_balance = current_balance
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Total Income", f"₹{total_income:,.2f}")
     col2.metric("Total Expenses", f"₹{total_expenses:,.2f}")
     col3.metric("Net Savings", f"₹{net_savings:,.2f}")
+    col4.metric("Current Balance", f"₹{current_balance:,.2f}")
+    col5.metric("Closing Balance", f"₹{statement_closing_balance:,.2f}")
 
     st.markdown("---")
     st.header("Expense Analysis")
@@ -243,6 +255,61 @@ else:
         fig_line.update_layout(title_x=0.5)
         st.plotly_chart(fig_line, use_container_width=True)
 
+        col3, col4 = st.columns(2)
+        with col3:
+            top_merchants = (
+                expense_df.groupby('merchant', as_index=False)['debit']
+                .sum()
+                .sort_values('debit', ascending=False)
+                .head(10)
+            )
+            fig_top_merchants = px.bar(
+                top_merchants,
+                x='debit',
+                y='merchant',
+                orientation='h',
+                title='Top 10 Merchants by Spend',
+                labels={'debit': 'Spend (₹)', 'merchant': 'Merchant'},
+                text_auto='.2s'
+            )
+            fig_top_merchants.update_layout(title_x=0.5, yaxis={'categoryorder': 'total ascending'})
+            st.plotly_chart(fig_top_merchants, use_container_width=True)
+
+        with col4:
+            income_vs_expense = pd.DataFrame(
+                {
+                    'Type': ['Income', 'Expense'],
+                    'Amount': [total_income, total_expenses],
+                }
+            )
+            fig_income_expense = px.bar(
+                income_vs_expense,
+                x='Type',
+                y='Amount',
+                color='Type',
+                title='Income vs Expense Comparison',
+                labels={'Amount': 'Amount (₹)'},
+                text_auto='.2s'
+            )
+            fig_income_expense.update_layout(title_x=0.5, showlegend=False)
+            st.plotly_chart(fig_income_expense, use_container_width=True)
+
+        balance_curve_df = viz_df.dropna(subset=['date_dt']).copy()
+        if 'closing_balance' in balance_curve_df.columns:
+            balance_curve_df['closing_balance'] = pd.to_numeric(balance_curve_df['closing_balance'], errors='coerce')
+            balance_curve_df = balance_curve_df.dropna(subset=['closing_balance'])
+            if not balance_curve_df.empty:
+                balance_curve_df = balance_curve_df.sort_values('date_dt')
+                fig_balance_curve = px.area(
+                    balance_curve_df,
+                    x='date_dt',
+                    y='closing_balance',
+                    title='Closing Balance Trend Over Time',
+                    labels={'date_dt': 'Date', 'closing_balance': 'Closing Balance (₹)'}
+                )
+                fig_balance_curve.update_layout(title_x=0.5)
+                st.plotly_chart(fig_balance_curve, use_container_width=True)
+
     st.markdown("---")
     st.header("Transaction Details")
     st.write("You can edit the 'remark' column below to add your own notes.")
@@ -271,3 +338,43 @@ else:
         mime="text/csv",
         help="Saves your edited remarks to a new CSV file."
     )
+
+    st.markdown("---")
+    st.header("Teach The App New Narration Rules")
+    st.write("Save your own narration to category/remark mapping. These rules are reused automatically in future analyses.")
+
+    narration_source_col = 'description' if 'description' in st.session_state.edited_data.columns else 'narration'
+    narration_options = []
+    if narration_source_col in st.session_state.edited_data.columns:
+        narration_options = sorted(
+            [
+                str(x) for x in st.session_state.edited_data[narration_source_col].dropna().unique().tolist()
+                if str(x).strip() != ''
+            ]
+        )
+
+    if narration_options:
+        with st.form("save_narration_rule_form"):
+            selected_narration = st.selectbox("Narration", options=narration_options)
+            pattern_input = st.text_input("Pattern to Match", value=selected_narration)
+            match_type = st.selectbox("Match Type", options=["contains", "exact", "similar"], index=0)
+            category_input = st.text_input("Category", value="Shopping")
+            remark_input = st.text_input("Remark", value="General Purchase / Transaction", help="Tip: use 'UPI Payment to <name>' for person-to-person UPI rules. Similar UPI narrations can auto-infer the payee name.")
+            save_rule_clicked = st.form_submit_button("Save Rule")
+
+            if save_rule_clicked:
+                try:
+                    pattern = pattern_input.strip() if pattern_input.strip() else selected_narration
+                    save_user_mapping(pattern, category_input, remark_input, match_type=match_type)
+                    st.success("Rule saved. It will be used in upcoming analysis runs.")
+                except Exception as save_error:
+                    st.error(f"Failed to save rule: {save_error}")
+    else:
+        st.info("No narration values available yet for rule creation.")
+
+    with st.expander("View Saved Rules"):
+        saved_rules = load_user_mappings()
+        if saved_rules:
+            st.dataframe(pd.DataFrame(saved_rules), use_container_width=True)
+        else:
+            st.write("No saved rules yet.")

@@ -10,6 +10,7 @@ import io
 import time
 import csv
 import json
+from user_mapping_store import apply_user_mappings_to_df
 
 
 def detect_delimiter(sample_text):
@@ -212,6 +213,10 @@ def process_statement(uploaded_file, account_holder_name, ai_provider, api_confi
     # Merge enriched data - get category and remark only
     enriched_df = pd.DataFrame(enriched_data)
     if enriched_df.shape[0] > 0:
+        # Avoid many-to-many row explosions if description repeats.
+        if 'original_description' in enriched_df.columns:
+            enriched_df = enriched_df.drop_duplicates(subset=['original_description'], keep='last')
+
         desc_col = 'description' if 'description' in df.columns else 'narration'
         df = pd.merge(df, enriched_df, left_on=desc_col, right_on='original_description', how='left')
         df.drop(columns=['original_description'], inplace=True, errors='ignore')
@@ -220,6 +225,9 @@ def process_statement(uploaded_file, account_holder_name, ai_provider, api_confi
     if 'merchant' not in df.columns:
         df['merchant'] = df.get('description', df.get('narration', ''))
     df['merchant'] = df['merchant'].fillna(df.get('description', df.get('narration', '')))
+
+    # User-saved rules are always authoritative for category/remark.
+    df = apply_user_mappings_to_df(df, description_col='description')
 
     df = get_payment_method(df)
     df['category'] = df['category'].fillna('Shopping')
