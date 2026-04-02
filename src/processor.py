@@ -1,4 +1,4 @@
-# processor.py
+﻿# processor.py
 # This file contains the core logic for processing the bank statement.
 # This version conditionally imports the correct AI enricher.
 
@@ -10,7 +10,7 @@ import io
 import time
 import csv
 import json
-from datetime import datetime
+
 
 def detect_delimiter(sample_text):
     """Try to detect delimiter automatically with csv.Sniffer and fallback list."""
@@ -31,14 +31,11 @@ def detect_delimiter(sample_text):
 
 def find_header_row(lines):
     """Find header row index by matching known fields."""
-    header_tokens = [
-        'date', 'narration', 'chq', 'ref', 'value', 'withdrawal', 'deposit', 'closing'
-    ]
+    header_tokens = ['date', 'narration', 'chq', 'ref', 'value', 'withdrawal', 'deposit', 'closing']
 
     for i, line in enumerate(lines):
         low = line.lower()
-        if all(any(tok in part for part in [low]) for tok in ['date', 'narration']):
-            # keep first row containing at least date+narration
+        if 'date' in low and 'narration' in low:
             return i
 
     for i, line in enumerate(lines):
@@ -51,7 +48,7 @@ def find_header_row(lines):
 
 def normalize_column_name(col_name):
     std = re.sub(r'[\W_]+', ' ', str(col_name).strip().lower())
-    std = std.replace('  ', ' ').strip()
+    std = ' '.join(std.split())
 
     if std in ['date', 'transaction date', 'txn date']:
         return 'date'
@@ -71,9 +68,7 @@ def normalize_column_name(col_name):
 
 
 def load_data(uploaded_file):
-    """
-    Loads data from an uploaded text file (.txt, .csv) and normalizes columns.
-    """
+    """Loads data from an uploaded text file (.txt, .csv) and normalizes columns."""
     try:
         uploaded_file.seek(0)
         raw_text = uploaded_file.getvalue().decode('utf-8')
@@ -88,7 +83,6 @@ def load_data(uploaded_file):
         raise ValueError("Uploaded file is empty or only whitespace.")
 
     header_row_index = find_header_row(lines)
-
     if header_row_index == -1:
         raise ValueError("Could not automatically find the transaction header row within the text file.")
 
@@ -114,52 +108,43 @@ def load_data(uploaded_file):
     for col in df.columns:
         normalized = normalize_column_name(col)
         if normalized:
+            if normalized in rename_map.values():
+                # keep first mapping only
+                continue
             rename_map[col] = normalized
 
     df.rename(columns=rename_map, inplace=True)
 
-    # Keep only relevant columns
-    needed = [
-        'date', 'narration', 'reference', 'value_date',
-        'withdrawal_amount', 'deposit_amount', 'closing_balance'
-    ]
-
+    needed = ['date', 'narration', 'reference', 'value_date', 'withdrawal_amount', 'deposit_amount', 'closing_balance']
     for col in needed:
         if col not in df.columns:
             df[col] = pd.NA
 
     df = df[needed]
-
-    # Drop summary/footer lines that may still exist
     df = df[~df[needed].isna().all(axis=1)]
 
     return df
 
 
 def clean_data_types(df):
-    """
-    Cleans the DataFrame by converting columns to the correct data types.
-    """
-    # Normalize string fields
+    """Cleans dataframe values and normalizes types."""
     for text_col in ['narration', 'reference']:
         if text_col in df.columns:
             df[text_col] = df[text_col].astype(str).str.strip().replace({'nan': pd.NA})
 
-    # Parse dates to ISO format
     for date_col in ['date', 'value_date']:
         if date_col in df.columns:
             df[date_col] = pd.to_datetime(df[date_col], errors='coerce', dayfirst=True)
             df[date_col] = df[date_col].dt.strftime('%Y-%m-%d')
 
-    # Numeric cleaning helper
     def clean_number(val):
         if pd.isna(val):
             return pd.NA
         s = str(val).strip()
         if s == '':
             return pd.NA
-        s = re.sub(r'[₹$,()]', '', s)
-        s = s.replace(' ', '').replace(',', '')
+        s = re.sub(r'[₹$\s(),]', '', s)
+        s = s.replace(',', '')
         try:
             return float(s)
         except Exception:
@@ -169,19 +154,15 @@ def clean_data_types(df):
         if num_col in df.columns:
             df[num_col] = df[num_col].apply(clean_number)
 
-    # Keep rows that have at least one amount or date
     if 'date' in df.columns:
         df = df.dropna(subset=['date'], how='all')
 
-    # Standardize missing values to None on output
     df = df.where(pd.notnull(df), None)
     return df
 
 
 def get_payment_method(df):
-    """
-    Determines the payment method using simple keyword matching.
-    """
+    """Determines payment method using setup rules."""
     def get_method(description):
         description = str(description).lower()
         for method, keywords in PAYMENT_METHOD_RULES.items():
@@ -190,77 +171,58 @@ def get_payment_method(df):
                     return method
         return 'Other'
 
-    df['payment_method'] = df['description'].apply(get_method)
+    df['payment_method'] = df['narration'].fillna('') .apply(get_method) if 'narration' in df.columns else 'Other'
     return df
 
 
 def statement_df_to_json(df):
     """Convert normalized DataFrame to required JSON output schema."""
-    schema_cols = [
-        'date', 'narration', 'reference', 'value_date',
-        'withdrawal_amount', 'deposit_amount', 'closing_balance'
-    ]
+    schema_cols = ['date', 'narration', 'reference', 'value_date', 'withdrawal_amount', 'deposit_amount', 'closing_balance']
     out_df = df.copy()
-
     for col in schema_cols:
         if col not in out_df.columns:
             out_df[col] = None
-
     out_df = out_df[schema_cols]
-
     records = out_df.to_dict(orient='records')
     return json.dumps(records, ensure_ascii=False, indent=2)
 
 
 def process_statement(uploaded_file, account_holder_name, ai_provider, api_config):
-    """
-    Main processing pipeline that now conditionally imports the correct enricher.
-    """
-    # Step 1: Reading and parsing file
+    """Main processing pipeline - preserves original narration, adds category/remark."""
     df = load_data(uploaded_file)
     df = clean_data_types(df)
 
-    # Adapt schema for existing downstream logic
-    if 'narration' in df.columns and 'description' not in df.columns:
+    # preserve legacy names
+    if 'description' not in df.columns and 'narration' in df.columns:
         df['description'] = df['narration']
-    if 'reference' in df.columns and 'transaction_reference' not in df.columns:
-        df['transaction_reference'] = df['reference']
-
-    if 'withdrawal_amount' in df.columns and 'debit' not in df.columns:
+    if 'debit' not in df.columns and 'withdrawal_amount' in df.columns:
         df['debit'] = df['withdrawal_amount']
-    if 'deposit_amount' in df.columns and 'credit' not in df.columns:
+    if 'credit' not in df.columns and 'deposit_amount' in df.columns:
         df['credit'] = df['deposit_amount']
 
-    # Step 2: Sending data to AI for analysis
-    if ai_provider == "Gemini API":
+    if ai_provider == 'Gemini API':
         from gemini_enricher import enrich_with_gemini
         enriched_data = enrich_with_gemini(df, api_config['key'], account_holder_name)
-    elif ai_provider == "Local Server":
+    elif ai_provider == 'Local Server':
         from local_ai_enricher import enrich_with_local_llama
         enriched_data = enrich_with_local_llama(df, api_config['url'], account_holder_name)
     else:
-        raise ValueError("Invalid AI Provider specified.")
+        raise ValueError('Invalid AI Provider specified.')
 
-    # Step 3: Merging AI insights
+    # Merge enriched data - get category and remark only
     enriched_df = pd.DataFrame(enriched_data)
-    
-    df = pd.merge(
-        df,
-        enriched_df,
-        left_on='description',
-        right_on='original_description',
-        how='left'
-    )
-    
-    df.drop(columns=['original_description'], inplace=True, errors='ignore')
+    if enriched_df.shape[0] > 0:
+        desc_col = 'description' if 'description' in df.columns else 'narration'
+        df = pd.merge(df, enriched_df, left_on=desc_col, right_on='original_description', how='left')
+        df.drop(columns=['original_description'], inplace=True, errors='ignore')
 
-    # Step 4: Finalizing details
+    # Merchant stays as original narration (never blank)
+    if 'merchant' not in df.columns:
+        df['merchant'] = df.get('description', df.get('narration', ''))
+    df['merchant'] = df['merchant'].fillna(df.get('description', df.get('narration', '')))
+
     df = get_payment_method(df)
-
-    df.fillna({
-        'merchant': df['description'], 
-        'category': 'Miscellaneous', 
-        'remark': ''
-    }, inplace=True)
-
+    df['category'] = df['category'].fillna('Shopping')
+    df['remark'] = df['remark'].fillna('')
+    
     return df

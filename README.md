@@ -91,17 +91,23 @@ Choose your preferred AI provider in the sidebar:
 
 ```
 DhanRakshak/
-├── app.py                  # Main Streamlit application
-├── processor.py            # Core transaction processing logic
-├── config.py              # Configuration constants and rules
-├── gemini_enricher.py     # Gemini API integration
-├── local_ai_enricher.py   # Local LLaMA model integration
-├── gemini_cleaner.py      # Data cleaning utilities for Gemini
-├── ai_enricher.py         # General AI enrichment utilities
-├── edaNotebook.py         # Exploratory data analysis notebook
-├── requirements.txt       # Python dependencies
-├── .gitignore            # Git ignore patterns
-└── README.md             # This file
+├── data/
+│   └── data.csv              # Sample input statement
+├── notebooks/
+│   └── edaNotebook.py        # Exploratory data analysis notebook
+├── src/
+│   ├── app.py                # Main Streamlit application
+│   ├── processor.py          # Core transaction processing logic
+│   ├── config.py             # Configuration constants and rules
+│   ├── gemini_enricher.py    # Gemini API integration
+│   ├── local_ai_enricher.py  # Local LLaMA model integration
+│   ├── gemini_cleaner.py     # Data cleaning utilities for Gemini
+│   ├── ai_enricher.py        # General AI enrichment utilities
+│   ├── utils/                # Parser and helper utilities
+│   └── tests/                # Unit tests
+├── requirements.txt          # Python dependencies
+├── .gitignore                # Git ignore patterns
+└── README.md                 # This file
 ```
 
 ## 🛠️ Technology Stack
