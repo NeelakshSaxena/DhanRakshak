@@ -6,6 +6,7 @@ import requests
 import json
 import re
 from user_mapping_store import load_user_mappings, find_mapping_for_description, build_dynamic_remark
+from transaction_patterns import parse_rule_based_pattern
 
 
 def extract_and_fix_json(content_str):
@@ -16,26 +17,17 @@ def extract_and_fix_json(content_str):
     
     if start_idx == -1 or end_idx == -1 or end_idx <= start_idx:
         raise ValueError("No valid JSON array found in response")
-    
+
     json_str = content_str[start_idx:end_idx + 1]
-    
+
     # Fix single quotes to double quotes, but carefully
-    # Replace single quotes that are used as string delimiters (not within double-quoted strings)
-    # Pattern: :[\s]*'([^']*)'([\s]*[,\}\]])
     json_str = re.sub(r":\s*'([^']*)'([\s]*[,\}])", r': "\1"\2', json_str)
-    
-    # Also handle cases like {'key': 'value'} at the start of fields
     json_str = re.sub(r"'([^']*)'([\s]*:)", r'"\1"\2', json_str)
-    
-    # Handle null values with single quotes turns like 'null'
     json_str = json_str.replace("'null'", 'null')
-    
-    # Try to parse and validate
+
     try:
         return json.loads(json_str)
     except json.JSONDecodeError as e:
-        # Last resort: try a more aggressive fix
-        # Replace ALL remaining single quotes with double quotes
         json_str_fixed = json_str.replace("'", '"')
         try:
             return json.loads(json_str_fixed)
@@ -59,6 +51,14 @@ def enrich_with_local_llama(df, api_url, account_holder_name):
     for _, row in df.iterrows():
         desc = row.get('description', '') or row.get('narration', '')
         desc = str(desc)
+
+        # First: deterministic pattern extraction for known formats.
+        rule_parsed = parse_rule_based_pattern(desc)
+        if rule_parsed:
+            pre_mapped_results.append(rule_parsed)
+            continue
+
+        # Second: user-saved mapping overrides.
         user_rule = find_mapping_for_description(desc, user_mappings)
 
         if user_rule:
@@ -70,6 +70,21 @@ def enrich_with_local_llama(df, api_url, account_holder_name):
                         desc,
                         user_rule.get("remark", "General Purchase / Transaction")
                     ),
+                    "transaction_type": "",
+                    "subcategory": "",
+                    "amount_direction": "",
+                    "entities": {
+                        "merchant": "",
+                        "organization": "",
+                        "upi_id": "",
+                    },
+                    "metadata": {
+                        "reference_number": "",
+                        "date": "",
+                        "time": "",
+                        "location": "",
+                    },
+                    "explanation": "Applied saved user narration rule",
                 }
             )
         else:
@@ -108,12 +123,28 @@ def enrich_with_local_llama(df, api_url, account_holder_name):
             if rule_lines:
                 user_rules_text = "\nUSER SAVED RULES (HIGH PRIORITY):\n" + "\n".join(rule_lines) + "\n"
 
-        # Comprehensive prompt that returns category and remark only
+        # Comprehensive prompt that returns category/remark plus structured pattern fields
         # Original description will be preserved from CSV
-        prompt = f"""Analyze bank transactions and return their CATEGORY and REMARK ONLY.
+        prompt = f"""Analyze bank transactions and return structured interpretation.
 Do NOT return a modified merchant name - the original transaction description is preserved as-is.
 
-Return ONLY this JSON format: [{{original_description, category, remark}}]
+    Return ONLY this JSON format:
+    [{{
+      original_description,
+      category,
+      remark,
+      transaction_type,
+      subcategory,
+      amount_direction,
+      entities: {{merchant, organization, upi_id}},
+      metadata: {{reference_number, date, time, location}},
+      explanation
+    }}]
+
+    PATTERN PRIORITY RULES:
+    - If text contains UPI + MUTUAL FUNDS + MFAUTOPAY: classify as UPI / AutoPay SIP.
+    - If text starts with POS and follows POS card pattern: classify as POS / Card Payment.
+    - For remaining lines, infer best category/remark and keep structured fields blank when unavailable.
 
 CATEGORIZATION RULES (Apply in order - use the FIRST match):
 
@@ -165,7 +196,7 @@ CATEGORIZATION RULES (Apply in order - use the FIRST match):
 
 CRITICAL REQUIREMENTS:
 - NEVER return blank category or remark - always provide values
-- ALWAYS return all three fields: original_description, category, remark
+- ALWAYS return all fields listed in schema
 - remark should briefly describe what type of transaction this is (if unsure, default to category + general description)
 - Do NOT modify or replace the original_description - return it exactly as provided
 
@@ -206,6 +237,18 @@ Output ONLY the JSON array with double quotes. No markdown, no explanations."""
                     result['category'] = 'Shopping'
                 if not result.get('remark') or result.get('remark').strip() == '':
                     result['remark'] = 'General Purchase / Transaction'
+                if 'transaction_type' not in result:
+                    result['transaction_type'] = ''
+                if 'subcategory' not in result:
+                    result['subcategory'] = ''
+                if 'amount_direction' not in result:
+                    result['amount_direction'] = ''
+                if 'entities' not in result or not isinstance(result.get('entities'), dict):
+                    result['entities'] = {"merchant": "", "organization": "", "upi_id": ""}
+                if 'metadata' not in result or not isinstance(result.get('metadata'), dict):
+                    result['metadata'] = {"reference_number": "", "date": "", "time": "", "location": ""}
+                if 'explanation' not in result:
+                    result['explanation'] = ''
             
             all_results.extend(batch_results)
             

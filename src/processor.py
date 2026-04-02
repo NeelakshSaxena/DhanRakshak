@@ -11,6 +11,8 @@ import time
 import csv
 import json
 from user_mapping_store import apply_user_mappings_to_df
+from transaction_patterns import apply_pattern_enrichment
+from transaction_modes import apply_transaction_modes
 
 
 def detect_delimiter(sample_text):
@@ -226,8 +228,14 @@ def process_statement(uploaded_file, account_holder_name, ai_provider, api_confi
         df['merchant'] = df.get('description', df.get('narration', ''))
     df['merchant'] = df['merchant'].fillna(df.get('description', df.get('narration', '')))
 
+    # Apply deterministic pattern parser for both Gemini API and Local LLM outputs.
+    df = apply_pattern_enrichment(df, description_col='description')
+
     # User-saved rules are always authoritative for category/remark.
     df = apply_user_mappings_to_df(df, description_col='description')
+
+    # Determine India transaction mode for each row using statement text.
+    df = apply_transaction_modes(df, description_col='description')
 
     df = get_payment_method(df)
     df['category'] = df['category'].fillna('Shopping')
