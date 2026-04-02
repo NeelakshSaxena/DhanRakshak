@@ -5,6 +5,7 @@
 import requests
 import json
 import re
+from user_mapping_store import load_user_mappings, find_mapping_for_description, build_dynamic_remark
 
 
 def extract_and_fix_json(content_str):
@@ -49,19 +50,63 @@ def enrich_with_local_llama(df, api_url, account_holder_name):
     Preserves original narration; categorization/insight details go to remarks.
     """
     headers = {"Content-Type": "application/json"}
+    user_mappings = load_user_mappings()
+
+    # Apply user-saved mappings first so known narrations do not rely on LLM guesses.
+    pre_mapped_results = []
+    remaining_df = []
+
+    for _, row in df.iterrows():
+        desc = row.get('description', '') or row.get('narration', '')
+        desc = str(desc)
+        user_rule = find_mapping_for_description(desc, user_mappings)
+
+        if user_rule:
+            pre_mapped_results.append(
+                {
+                    "original_description": desc,
+                    "category": user_rule.get("category", "Shopping"),
+                    "remark": build_dynamic_remark(
+                        desc,
+                        user_rule.get("remark", "General Purchase / Transaction")
+                    ),
+                }
+            )
+        else:
+            remaining_df.append(row)
+
+    if not remaining_df:
+        return pre_mapped_results
+
+    remaining_df = df.__class__(remaining_df)
     
     # Process transactions in batches to avoid vague results
     batch_size = 15  # Optimal size for detailed categorization
     all_results = []
     
-    for batch_idx in range(0, len(df), batch_size):
-        batch_df = df.iloc[batch_idx:batch_idx + batch_size]
+    for batch_idx in range(0, len(remaining_df), batch_size):
+        batch_df = remaining_df.iloc[batch_idx:batch_idx + batch_size]
         transactions = []
         for idx, row in batch_df.iterrows():
             desc = row.get('description', '') or row.get('narration', '')
             transactions.append({'d': str(desc)})
         
         transactions_json = json.dumps(transactions)
+
+        user_rules_text = ""
+        if user_mappings:
+            rule_lines = []
+            for rule in user_mappings:
+                pattern = str(rule.get("pattern", "")).strip()
+                category = str(rule.get("category", "Shopping")).strip()
+                remark = str(rule.get("remark", "General Purchase / Transaction")).strip()
+                match_type = str(rule.get("match_type", "contains")).strip()
+                if pattern:
+                    rule_lines.append(
+                        f'- {match_type} "{pattern}" -> category: "{category}", remark: "{remark}"'
+                    )
+            if rule_lines:
+                user_rules_text = "\nUSER SAVED RULES (HIGH PRIORITY):\n" + "\n".join(rule_lines) + "\n"
 
         # Comprehensive prompt that returns category and remark only
         # Original description will be preserved from CSV
@@ -126,6 +171,8 @@ CRITICAL REQUIREMENTS:
 
 Transactions to analyze: {transactions_json}
 
+{user_rules_text}
+
 Output ONLY the JSON array with double quotes. No markdown, no explanations."""
 
         payload = {
@@ -145,10 +192,10 @@ Output ONLY the JSON array with double quotes. No markdown, no explanations."""
             content_str = result['choices'][0]['message']['content']
             
             # Remove markdown code blocks if present
-            if "`json" in content_str:
-                content_str = content_str.split("`json")[1].split("`")[0]
-            elif "`" in content_str:
-                content_str = content_str.split("`")[1].split("`")[0]
+            if "```json" in content_str:
+                content_str = content_str.split("```json")[1].split("```")[0]
+            elif "```" in content_str:
+                content_str = content_str.split("```")[1].split("```")[0]
             
             # Extract and fix JSON array
             batch_results = extract_and_fix_json(content_str)
@@ -169,4 +216,4 @@ Output ONLY the JSON array with double quotes. No markdown, no explanations."""
         except (KeyError, IndexError) as e:
             raise RuntimeError(f"Unexpected response format from local model. Error: {e}. Response: {response.text if 'response' in locals() else 'N/A'}")
     
-    return all_results
+    return pre_mapped_results + all_results
