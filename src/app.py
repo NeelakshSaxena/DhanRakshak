@@ -1,14 +1,17 @@
 # app.py
 # This is the main file for the Streamlit web application.
-# This version has a robust UI, correct processing calls, and visual feedback.
+# This version has a robust UI, correct processing calls, and visual feedback with local loading animation.
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import time
+from pathlib import Path
+import os
 
 # Import the processor function
 from processor import process_statement
+
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -63,6 +66,30 @@ if 'processing' not in st.session_state:
 def convert_df_to_csv(df):
     # IMPORTANT: Cache the conversion to prevent computation on every rerun
     return df.to_csv(index=False).encode('utf-8')
+
+
+def show_loading_animation():
+    """Display animated loading animation using proper HTML rendering."""
+    animation_path = Path(__file__).parent / "animations" / "loading.gif"
+    
+    if animation_path.exists():
+        # Read GIF as base64 for embedding in HTML
+        import base64
+        with open(animation_path, 'rb') as img_file:
+            img_data = base64.b64encode(img_file.read()).decode()
+        
+        # Centered, clean display with animation and loading text
+        st.markdown(
+            f"""
+            <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 60vh;">
+                <img src="data:image/gif;base64,{img_data}" width="220" alt="Loading..." style="margin-bottom: 20px;">
+                <p style="font-size: 18px; color: #666; margin-top: 10px; text-align: center; letter-spacing: 2px;">Loading...</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        st.info("⏳ Loading... (add loading.gif to src/animations/)")
 
 # --- Sidebar ---
 with st.sidebar:
@@ -119,12 +146,12 @@ with st.sidebar:
 
 # --- Main Page Display ---
 
-# This container will hold our GIFs or the welcome message
+# This container will hold animations or the welcome message
 main_placeholder = st.empty()
 
 if st.session_state.get('processing'):
     with main_placeholder.container():
-        st.markdown("<div class='gif-container'><img src='https://media.tenor.com/Un_bT5R7i-8AAAAC/yibo-wangyibo.gif' width='200'><h3 style='text-align: center;'>Analyzing your statement...</h3></div>", unsafe_allow_html=True)
+        show_loading_animation()
     
     try:
         df = process_statement(st.session_state.uploaded_file_obj, account_holder_name, ai_provider, api_config)
@@ -132,10 +159,12 @@ if st.session_state.get('processing'):
         st.session_state.edited_data = df.copy()
         st.session_state.processing = False
         
-        # Show the "Done" GIF briefly
+        # Show completion message briefly
         with main_placeholder.container():
-            st.markdown("<div class='gif-container'><img src='https://media.tenor.com/A15iB2OL_n4AAAAC/done-finished.gif' width='200'></div>", unsafe_allow_html=True)
-        time.sleep(2)
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                st.success("✅ Analysis complete!")
+        time.sleep(1)
         st.rerun()
 
     except Exception as e:
@@ -146,8 +175,10 @@ if st.session_state.get('processing'):
 elif st.session_state.get('error_message'):
     # --- ERROR SCREEN ---
     with main_placeholder.container():
-        st.markdown("<div class='gif-container'><img src='https://media.tenor.com/fY9_t4Imu-4AAAAC/epikube-headbang.gif' width='200'></div>", unsafe_allow_html=True)
-        st.error(f"An error occurred: {st.session_state.error_message}")
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.error("⚠️ An error occurred")
+        st.error(f"{st.session_state.error_message}")
         st.warning("Please check your settings on the left and try again.")
 
 elif st.session_state.get('processed_data') is None:
@@ -203,7 +234,7 @@ else:
             fig_bar.update_layout(title_x=0.5, yaxis_title=None)
             st.plotly_chart(fig_bar, use_container_width=True)
             
-        daily_expenses = expense_df.groupby(df['date'].dt.date)['debit'].sum().reset_index()
+        daily_expenses = expense_df.groupby('date')['debit'].sum().reset_index()
         fig_line = px.line(
             daily_expenses, x='date', y='debit',
             title='Daily Spending Over Time', labels={'date': 'Date', 'debit': 'Total Expenses (₹)'},
