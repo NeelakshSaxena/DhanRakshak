@@ -1,0 +1,8 @@
+[
+  {
+    "pattern": "POS 435584XXXXXX1876 607516390691 16MAR26 16:05:32 VELLORE ALL MART",
+    "match_type": "contains",
+    "category": "Shopping",
+    "remark": "General Purchase / Transaction"
+  }
+]
