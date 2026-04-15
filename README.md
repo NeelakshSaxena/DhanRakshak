@@ -51,7 +51,7 @@
 ### Running the Application
 
 ```bash
-streamlit run app.py
+streamlit run src/app.py
 ```
 
 The application will open in your default web browser at `http://localhost:8501`.
