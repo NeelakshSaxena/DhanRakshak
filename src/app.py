@@ -191,8 +191,6 @@ elif st.session_state.get('processed_data') is None:
                 disabled=force_skip_ai
             )
             
-            account_holder_name = st.text_input("Your Full Name (as in statement)", value="Neelaksh Saxena", help="This helps identify self-transfers accurately.")
-            
         with col2:
             st.header("2. AI Configuration")
             ai_provider = st.radio(
@@ -201,15 +199,28 @@ elif st.session_state.get('processed_data') is None:
                 help="Use a local model for 100% privacy, Google's Gemini API for power, or a custom API endpoint."
             )
             
+            # --- Privacy Warning ---
+            if ai_provider in ["Gemini API", "Custom Endpoint"]:
+                st.warning("⚠️ **Privacy Risk**: Sending sensitive bank statements to online hosted APIs (like OpenAI, Claude, or Gemini) comes with privacy risks. For personal and local use, we highly recommend using **Local Server (Local LLMs)**.")
+                accept_privacy_risk = st.checkbox("I understand the privacy risks and want to proceed with a hosted API.")
+            else:
+                st.success("🔒 You are using a Local Server. Your data remains 100% private and never leaves your machine.")
+                accept_privacy_risk = True
+
             api_config = {}
-            if ai_provider == "Local Server":
-                api_config['url'] = st.text_input("Local Server URL", "http://localhost:1234/v1/chat/completions")
-            elif ai_provider == "Custom Endpoint":
-                api_config['url'] = st.text_input("Custom Endpoint URL", "https://api.runpod.ai/v2/your-id/runsync")
-                api_config['key'] = st.text_input("Custom API Key (Bearer)", type="password")
-            else: # Gemini API
-                api_key_input = st.text_input("Gemini API Key", type="password")
-                if api_key_input:
+            if not force_skip_ai:
+                if ai_provider == "Local Server":
+                    local_url = st.text_input("Local Server URL", value="http://localhost:1234/v1/chat/completions", help="URL for LM Studio, Ollama, etc.")
+                    api_config['url'] = local_url
+                
+                elif ai_provider == "Custom Endpoint":
+                    custom_url = st.text_input("Custom API URL", value="")
+                    custom_key = st.text_input("Custom API Key", type="password")
+                    api_config['url'] = custom_url
+                    api_config['key'] = custom_key
+                    
+                elif ai_provider == "Gemini API":
+                    api_key_input = st.text_input("Gemini API Key", type="password")
                     api_config['key'] = api_key_input
                     try:
                         import requests
@@ -277,12 +288,13 @@ elif st.session_state.get('processed_data') is None:
             
             col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
             with col_btn2:
-                if st.button("Confirm & Process", type="primary", use_container_width=True, disabled=not confirm_scrub):
+                can_process = confirm_scrub and accept_privacy_risk
+                if st.button("Confirm & Process", type="primary", use_container_width=True, disabled=not can_process):
                     # Save UI state
                     st.session_state.raw_scrubbed_text = scrubbed_text
                     st.session_state.api_config_state = api_config
                     st.session_state.ai_provider_state = ai_provider
-                    st.session_state.name_state = account_holder_name
+                    st.session_state.name_state = "The User"
                     st.session_state.skip_ai_state = force_skip_ai
                     st.session_state.use_ai_mapper_state = use_ai_mapper
                     
