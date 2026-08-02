@@ -101,15 +101,42 @@ with st.sidebar:
     st.header("1. AI Configuration")
     ai_provider = st.radio(
         "Select AI Provider", 
-        ("Local Server", "Gemini API"),
-        help="Use a local model for 100% privacy or Google's Gemini API for power."
+        ("Local Server", "Gemini API", "Custom Endpoint"),
+        help="Use a local model for 100% privacy, Google's Gemini API for power, or a custom API endpoint."
     )
     
     api_config = {}
     if ai_provider == "Local Server":
         api_config['url'] = st.text_input("Local Server URL", "http://localhost:1234/v1/chat/completions")
+    elif ai_provider == "Custom Endpoint":
+        api_config['url'] = st.text_input("Custom Endpoint URL", "https://api.runpod.ai/v2/your-id/runsync")
+        api_config['key'] = st.text_input("Custom API Key (Bearer)", type="password")
     else: # Gemini API
-        api_config['key'] = st.text_input("Gemini API Key", type="password")
+        api_key_input = st.text_input("Gemini API Key", type="password")
+        if api_key_input:
+            api_config['key'] = api_key_input
+            
+            # Fetch available models
+            try:
+                import requests
+                response = requests.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key_input}")
+                if response.status_code == 200:
+                    models = [m['name'].split('/')[-1] for m in response.json().get('models', []) if 'generateContent' in m.get('supportedGenerationMethods', []) and '2.5' not in m['name']]
+                    
+                    if models:
+                        # Select box for model, defaulting to gemini-1.5-flash if available
+                        default_index = models.index('gemini-1.5-flash') if 'gemini-1.5-flash' in models else 0
+                        selected_model = st.selectbox("Select Gemini Model", models, index=default_index)
+                        api_config['model'] = selected_model
+                    else:
+                        st.warning("No suitable models found for this API key.")
+                        api_config['model'] = "gemini-1.5-flash" # Fallback
+                else:
+                    st.error(f"Error fetching models: {response.status_code}")
+                    api_config['model'] = "gemini-1.5-flash" # Fallback
+            except Exception as e:
+                st.error(f"Could not fetch models: {e}")
+                api_config['model'] = "gemini-1.5-flash" # Fallback
 
     st.header("2. Your Information")
     account_holder_name = st.text_input("Your Full Name (as in statement)", value="Neelaksh Saxena", help="This helps identify self-transfers accurately.")
@@ -158,6 +185,7 @@ if st.session_state.get('processing'):
     try:
         df = process_statement(st.session_state.uploaded_file_obj, account_holder_name, ai_provider, api_config)
         st.session_state.processed_data = df
+        st.session_state.original_columns = df.attrs.get('original_columns', [])
         st.session_state.edited_data = df.copy()
         st.session_state.processing = False
         
@@ -208,14 +236,19 @@ else:
     net_savings = total_income - total_expenses
 
     balance_series = pd.to_numeric(viz_df.get('closing_balance'), errors='coerce').dropna()
-    current_balance = balance_series.iloc[-1] if not balance_series.empty else 0.0
-    statement_closing_balance = current_balance
+    if not balance_series.empty:
+        statement_closing_balance = balance_series.iloc[-1]
+        # Mathematical absolute truth: Opening Balance + Net Savings = Closing Balance
+        opening_balance = statement_closing_balance - net_savings
+    else:
+        statement_closing_balance = 0.0
+        opening_balance = 0.0
     
     col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Total Income", f"₹{total_income:,.2f}")
     col2.metric("Total Expenses", f"₹{total_expenses:,.2f}")
     col3.metric("Net Savings", f"₹{net_savings:,.2f}")
-    col4.metric("Current Balance", f"₹{current_balance:,.2f}")
+    col4.metric("Opening Balance", f"₹{opening_balance:,.2f}")
     col5.metric("Closing Balance", f"₹{statement_closing_balance:,.2f}")
 
     st.markdown("---")
@@ -313,40 +346,45 @@ else:
             fig_income_expense.update_layout(title_x=0.5, showlegend=False)
             st.plotly_chart(fig_income_expense, use_container_width=True)
 
-        if 'transaction_type' in expense_df.columns:
-            tx_type_df = expense_df.copy()
-            tx_type_df['transaction_type'] = tx_type_df['transaction_type'].replace('', pd.NA).fillna('Other')
-            tx_split = (
-                tx_type_df.groupby('transaction_type', as_index=False)['debit']
-                .sum()
-                .sort_values('debit', ascending=False)
-            )
-            if not tx_split.empty:
-                fig_tx_split = px.pie(
-                    tx_split,
-                    names='transaction_type',
-                    values='debit',
-                    title='Spend Split by Transaction Type (UPI vs POS vs Other)',
-                    hole=0.35
+        # Use Streamlit columns to display the two charts side by side
+        chart_col1, chart_col2 = st.columns(2)
+        
+        with chart_col1:
+            if 'transaction_type' in expense_df.columns:
+                tx_type_df = expense_df.copy()
+                tx_type_df['transaction_type'] = tx_type_df['transaction_type'].replace('', pd.NA).fillna('Other')
+                tx_split = (
+                    tx_type_df.groupby('transaction_type', as_index=False)['debit']
+                    .sum()
+                    .sort_values('debit', ascending=False)
                 )
-                fig_tx_split.update_traces(textposition='inside', textinfo='percent+label')
-                fig_tx_split.update_layout(title_x=0.5)
-                st.plotly_chart(fig_tx_split, use_container_width=True)
+                if not tx_split.empty:
+                    fig_tx_split = px.pie(
+                        tx_split,
+                        names='transaction_type',
+                        values='debit',
+                        title='Spend Split by Transaction Type',
+                        hole=0.35
+                    )
+                    fig_tx_split.update_traces(textposition='inside', textinfo='percent+label')
+                    fig_tx_split.update_layout(title_x=0.5)
+                    st.plotly_chart(fig_tx_split, use_container_width=True)
 
-        if 'transaction_mode' in expense_df.columns:
-            mode_spend = summarize_modes(expense_df, amount_col='debit')
-            if not mode_spend.empty:
-                fig_mode_spend = px.bar(
-                    mode_spend,
-                    x='amount',
-                    y='transaction_mode',
-                    orientation='h',
-                    title='Spend by India Transaction Mode',
-                    labels={'amount': 'Spend (₹)', 'transaction_mode': 'Transaction Mode'},
-                    text_auto='.2s'
-                )
-                fig_mode_spend.update_layout(title_x=0.5, yaxis={'categoryorder': 'total ascending'})
-                st.plotly_chart(fig_mode_spend, use_container_width=True)
+        with chart_col2:
+            if 'transaction_mode' in expense_df.columns:
+                mode_spend = summarize_modes(expense_df, amount_col='debit')
+                if not mode_spend.empty:
+                    fig_mode_spend = px.bar(
+                        mode_spend,
+                        x='amount',
+                        y='transaction_mode',
+                        orientation='h',
+                        title='Spend by India Transaction Mode',
+                        labels={'amount': 'Spend (₹)', 'transaction_mode': 'Transaction Mode'},
+                        text_auto='.2s'
+                    )
+                    fig_mode_spend.update_layout(title_x=0.5, yaxis={'categoryorder': 'total ascending'})
+                    st.plotly_chart(fig_mode_spend, use_container_width=True)
 
         balance_curve_df = viz_df.dropna(subset=['date_dt']).copy()
         if 'closing_balance' in balance_curve_df.columns:
@@ -371,9 +409,45 @@ else:
     if 'edited_data' not in st.session_state or st.session_state.edited_data is None:
         st.session_state.edited_data = df.copy()
 
+    with st.expander("Filter Transactions", expanded=False):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            try:
+                temp_dates = pd.to_datetime(st.session_state.edited_data['date'], errors='coerce')
+                valid_dates = temp_dates.dropna()
+                min_date = valid_dates.min().date() if not valid_dates.empty else None
+                max_date = valid_dates.max().date() if not valid_dates.empty else None
+                date_range = st.date_input("Date Range", value=(min_date, max_date) if min_date and max_date else [], min_value=min_date, max_value=max_date)
+            except Exception:
+                date_range = []
+                st.write("Date filtering unavailable")
+        
+        with col2:
+            unique_cats = sorted([str(c) for c in st.session_state.edited_data.get('category', pd.Series(dtype=str)).dropna().unique() if str(c).strip()])
+            selected_categories = st.multiselect("Filter by Category", options=unique_cats)
+            
+        with col3:
+            search_query = st.text_input("Search (Merchant / Remark)")
+
+    filtered_df = st.session_state.edited_data.copy()
+
+    if date_range and len(date_range) == 2:
+        start_date, end_date = date_range
+        date_col = pd.to_datetime(filtered_df['date'], errors='coerce')
+        filtered_df = filtered_df[date_col.dt.date.between(start_date, end_date) | date_col.isna()]
+    
+    if selected_categories:
+        filtered_df = filtered_df[filtered_df['category'].isin(selected_categories)]
+        
+    if search_query:
+        query = search_query.lower()
+        merchant_match = filtered_df.get('merchant', pd.Series(dtype=str)).astype(str).str.lower().str.contains(query)
+        remark_match = filtered_df.get('remark', pd.Series(dtype=str)).astype(str).str.lower().str.contains(query)
+        filtered_df = filtered_df[merchant_match | remark_match]
+
     visible_cols = ['date', 'merchant', 'transaction_mode', 'mode_confidence', 'debit', 'credit', 'category', 'remark']
-    edited_df_from_editor = st.data_editor(
-        st.session_state.edited_data,
+    edited_filtered_df = st.data_editor(
+        filtered_df,
         column_config={
             "remark": st.column_config.TextColumn("Remarks (Editable)", max_chars=100),
             "transaction_mode": st.column_config.TextColumn("Transaction Mode", disabled=True),
@@ -382,15 +456,29 @@ else:
             "credit": st.column_config.NumberColumn("Credit (₹)", format="₹ %.2f"),
             "description": None, "payment_method": None, "gateway": None,
         },
-        column_order=[col for col in visible_cols if col in st.session_state.edited_data.columns],
+        column_order=[col for col in visible_cols if col in filtered_df.columns],
         use_container_width=True, key="data_editor"
     )
-    st.session_state.edited_data = edited_df_from_editor
+    
+    st.session_state.edited_data.update(edited_filtered_df)
+
+    export_df = st.session_state.edited_data.copy()
+    if st.session_state.get('original_columns'):
+        # Keep original columns in their original order, plus the new enrichments
+        cols_to_export = st.session_state.original_columns + ['merchant', 'category', 'remark']
+        # Preserve order, ignore missing
+        cols_to_export = [c for c in dict.fromkeys(cols_to_export) if c in export_df.columns]
+        export_df = export_df[cols_to_export]
+
+    # Handle the `.csv` extension properly so we don't get `.csv.csv`
+    original_name = st.session_state.uploaded_file_obj.name
+    if not original_name.endswith('.csv'):
+        original_name += '.csv'
 
     st.download_button(
         label="Download Updated Statement",
-        data=convert_df_to_csv(st.session_state.edited_data),
-        file_name=f"edited_{st.session_state.uploaded_file_obj.name}.csv",
+        data=convert_df_to_csv(export_df),
+        file_name=f"edited_{original_name}",
         mime="text/csv",
         help="Saves your edited remarks to a new CSV file."
     )
@@ -400,31 +488,59 @@ else:
     st.write("Save your own narration to category/remark mapping. These rules are reused automatically in future analyses.")
 
     narration_source_col = 'description' if 'description' in st.session_state.edited_data.columns else 'narration'
-    narration_options = []
     if narration_source_col in st.session_state.edited_data.columns:
-        narration_options = sorted(
-            [
-                str(x) for x in st.session_state.edited_data[narration_source_col].dropna().unique().tolist()
-                if str(x).strip() != ''
-            ]
-        )
-
-    if narration_options:
-        with st.form("save_narration_rule_form"):
-            selected_narration = st.selectbox("Narration", options=narration_options)
-            pattern_input = st.text_input("Pattern to Match", value=selected_narration)
-            match_type = st.selectbox("Match Type", options=["contains", "exact", "similar"], index=0)
-            category_input = st.text_input("Category", value="Shopping")
-            remark_input = st.text_input("Remark", value="General Purchase / Transaction", help="Tip: use 'UPI Payment to <name>' for person-to-person UPI rules. Similar UPI narrations can auto-infer the payee name.")
-            save_rule_clicked = st.form_submit_button("Save Rule")
-
-            if save_rule_clicked:
-                try:
-                    pattern = pattern_input.strip() if pattern_input.strip() else selected_narration
-                    save_user_mapping(pattern, category_input, remark_input, match_type=match_type)
-                    st.success("Rule saved. It will be used in upcoming analysis runs.")
-                except Exception as save_error:
-                    st.error(f"Failed to save rule: {save_error}")
+        # Group by narration to get unique ones and their current assigned category/remark
+        grouped = st.session_state.edited_data.copy()
+        grouped[narration_source_col] = grouped[narration_source_col].astype(str)
+        grouped = grouped[grouped[narration_source_col].str.strip() != '']
+        
+        if not grouped.empty:
+            grouped = grouped.groupby(narration_source_col).first().reset_index()
+            st.write("Check the **Save?** box to save a rule. You can edit the pattern, category, and remark before saving.")
+            
+            rules_df = pd.DataFrame({
+                "Save?": [False] * len(grouped),
+                "Pattern to Match": grouped[narration_source_col],
+                "Match Type": ["contains"] * len(grouped),
+                "Category": grouped.get("category", pd.Series(["Shopping"] * len(grouped))),
+                "Remark": grouped.get("remark", pd.Series([""] * len(grouped)))
+            })
+            
+            edited_rules_df = st.data_editor(
+                rules_df,
+                column_config={
+                    "Save?": st.column_config.CheckboxColumn("Save?", default=False),
+                    "Pattern to Match": st.column_config.TextColumn("Pattern to Match (Editable)"),
+                    "Match Type": st.column_config.SelectboxColumn("Match Type", options=["contains", "exact", "similar"], required=True),
+                    "Category": st.column_config.TextColumn("Category"),
+                    "Remark": st.column_config.TextColumn("Remark"),
+                },
+                hide_index=True,
+                use_container_width=True,
+                key="rules_bulk_editor"
+            )
+            
+            if st.button("Save Selected Rules", type="primary"):
+                saved_count = 0
+                for _, row in edited_rules_df[edited_rules_df["Save?"] == True].iterrows():
+                    pat = row.get("Pattern to Match")
+                    cat = row.get("Category")
+                    rem = row.get("Remark")
+                    mtype = row.get("Match Type")
+                    
+                    if pd.notna(pat) and str(pat).strip() != "" and pd.notna(cat) and str(cat).strip() != "":
+                        try:
+                            save_user_mapping(str(pat).strip(), str(cat).strip(), str(rem).strip() if pd.notna(rem) else "", match_type=mtype)
+                            saved_count += 1
+                        except Exception as e:
+                            st.error(f"Failed to save rule for {pat}: {e}")
+                
+                if saved_count > 0:
+                    st.success(f"Successfully saved {saved_count} new rule(s)!")
+                else:
+                    st.warning("No valid rules were selected to save.")
+        else:
+            st.info("No narration values available yet for rule creation.")
     else:
         st.info("No narration values available yet for rule creation.")
 

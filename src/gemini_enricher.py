@@ -4,14 +4,14 @@
 import requests
 import json
 
-def enrich_with_gemini(df, api_key, account_holder_name):
+def enrich_with_gemini(df, api_key, account_holder_name, model_name="gemini-1.5-flash"):
     """
     Sends transaction data to the Google Gemini API for analysis.
     """
     # Clean the API key to remove whitespace or unwanted characters
     cleaned_api_key = api_key.strip().strip("'\"")
     
-    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key={cleaned_api_key}"
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={cleaned_api_key}"
     
     transactions_json = df[['description', 'debit', 'credit']].to_json(orient='records')
     json_schema = {
@@ -48,13 +48,27 @@ Analyze these transactions and return a JSON array that matches the provided sch
         "generationConfig": {"responseMimeType": "application/json", "responseSchema": json_schema}
     }
     headers = {'Content-Type': 'application/json'}
-    try:
-        response = requests.post(api_url, json=payload, headers=headers)
-        response.raise_for_status()
-        result = response.json()
-        enriched_data_str = result['candidates'][0]['content']['parts'][0]['text']
-        return json.loads(enriched_data_str)
-    except requests.exceptions.RequestException as e:
-        raise RuntimeError(f"Network error calling Gemini API: {e}")
-    except (KeyError, IndexError, json.JSONDecodeError) as e:
-        raise RuntimeError(f"Failed to get valid JSON from Gemini API. Error: {e}. Response: {response.text}")
+    import time
+    import streamlit as st
+    
+    max_retries = 3
+    base_delay = 5
+    
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(api_url, json=payload, headers=headers)
+            response.raise_for_status()
+            result = response.json()
+            enriched_data_str = result['candidates'][0]['content']['parts'][0]['text']
+            return json.loads(enriched_data_str)
+        except requests.exceptions.HTTPError as e:
+            if response.status_code == 429 and attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)
+                st.warning(f"API Rate limit hit (429). Retrying in {delay} seconds... (Attempt {attempt+1}/{max_retries-1})")
+                time.sleep(delay)
+                continue
+            raise RuntimeError(f"Network error calling Gemini API: {e}")
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Network error calling Gemini API: {e}")
+        except (KeyError, IndexError, json.JSONDecodeError) as e:
+            raise RuntimeError(f"Failed to get valid JSON from Gemini API. Error: {e}. Response: {response.text}")

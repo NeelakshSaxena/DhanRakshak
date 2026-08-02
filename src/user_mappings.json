@@ -4,5 +4,407 @@
     "match_type": "contains",
     "category": "Shopping",
     "remark": "General Purchase / Transaction"
+  },
+  {
+    "pattern": "FT- 1155858125-NEELAKSH-57500000009262 - INDIAN CLEARING CORPORATION LIMITED -",
+    "match_type": "contains",
+    "category": "Income",
+    "remark": "Investment Settlement"
+  },
+  {
+    "pattern": "FT- 2828593285-57500000389159 - INDIAN CLEARING CORPORATION LIMITED -",
+    "match_type": "contains",
+    "category": "Income",
+    "remark": "Investment Settlement"
+  },
+  {
+    "pattern": "FT- 461800639104-50200067172675 - NSE CLEARING LIMITED MFSS SETTLEMENT A/C -",
+    "match_type": "contains",
+    "category": "Income",
+    "remark": "Investment Settlement"
+  },
+  {
+    "pattern": "FT- 461800639307-50200067172675 - NSE CLEARING LIMITED MFSS SETTLEMENT A/C -",
+    "match_type": "contains",
+    "category": "Income",
+    "remark": "Investment Settlement"
+  },
+  {
+    "pattern": "FT- 461800639325-50200067172675 - NSE CLEARING LIMITED MFSS SETTLEMENT A/C -",
+    "match_type": "contains",
+    "category": "Income",
+    "remark": "Investment Settlement"
+  },
+  {
+    "pattern": "POS 435584XXXXXX1876 000000015972 02JUL26 18:31:47 LUCKNOW WESTSIDE UNIT OF TRENT",
+    "match_type": "contains",
+    "category": "Shopping",
+    "remark": "Card Payment at POS Merchant"
+  },
+  {
+    "pattern": "POS 435584XXXXXX1876 000000077366 02JUL26 17:50:52 LUCKNOW MARKET 99",
+    "match_type": "contains",
+    "category": "Shopping",
+    "remark": "Card Payment at POS Merchant"
+  },
+  {
+    "pattern": "POS 435584XXXXXX1876 618311510317 02JUL26 16:47:30 8800353047 DISTRICT DINING CYBS",
+    "match_type": "contains",
+    "category": "Food",
+    "remark": "Restaurant Expense"
+  },
+  {
+    "pattern": "POS 435584XXXXXX1876 619115619162 10JUL26 20:30:30 1243054000 WWW AMAZON IN",
+    "match_type": "contains",
+    "category": "Shopping",
+    "remark": "Online Shopping"
+  },
+  {
+    "pattern": "POS 435584XXXXXX1876 620113298631 20JUL26 13:32:52 GURGAON AIRTEL PAYMENTS BAN",
+    "match_type": "contains",
+    "category": "Shopping",
+    "remark": "Card Payment at POS Merchant"
+  },
+  {
+    "pattern": "POS 435584XXXXXX1876 620631015752 25JUL26 11:04:43 NOIDA RELIANCE RETAIL LIMITE",
+    "match_type": "contains",
+    "category": "Shopping",
+    "remark": "Card Payment at POS Merchant"
+  },
+  {
+    "pattern": "POS 435584XXXXXX1876 620905880121 29JUL26 10:43:56 7428480246 DISTRICT",
+    "match_type": "contains",
+    "category": "Food",
+    "remark": "Restaurant Order"
+  },
+  {
+    "pattern": "UPI-AADYA TIWARI-9235519231@YBL-PSIB0000916-126933725991-UPI",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Peer Payment"
+  },
+  {
+    "pattern": "UPI-AADYA TIWARI-9235519231@YBL-PSIB0000916-753044130284-PAYMENT FROM PHONE",
+    "match_type": "contains",
+    "category": "Income",
+    "remark": "Received Funds"
+  },
+  {
+    "pattern": "UPI-AADYA TIWARI-9235519231@YBL-PSIB0000916-925688088876-PAYMENT FROM PHONE",
+    "match_type": "contains",
+    "category": "Income",
+    "remark": "Received Funds"
+  },
+  {
+    "pattern": "UPI-AHMED  MUSTAFA-9019889308-4@IBL-CNRB0000033-125682564482-UPI",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Peer Payment"
+  },
+  {
+    "pattern": "UPI-AKASH KUMAR-ISKCONVELLORE@IBL-UTIB0004070-620745270846-UPI",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Charity Payment"
+  },
+  {
+    "pattern": "UPI-AMAZON PAY ON DELIVE-AMAZON-POD@YAPL-YESB0APLUPI-126427403479-UPI",
+    "match_type": "contains",
+    "category": "Shopping",
+    "remark": "E-commerce Order"
+  },
+  {
+    "pattern": "UPI-ANIKET SINGH-ANIKET.4232-7@WAAXIS-BARB0BACHHR-618425967364-UPI",
+    "match_type": "contains",
+    "category": "Income",
+    "remark": "Payment Received"
+  },
+  {
+    "pattern": "UPI-ARYA  KARMAKAR-ARYA.KARMAKAR2004@OKSBI-SBIN0004605-656861734076-UPI",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Peer Payment"
+  },
+  {
+    "pattern": "UPI-AUTOPAY-INDIAN CLEARING CORP-ZERODHA.ICCL7.BRK@VALIDYES-HDFC0000060-618234991197-REMARKS",
+    "match_type": "contains",
+    "category": "Investments",
+    "remark": "Autopay Investment"
+  },
+  {
+    "pattern": "UPI-AUTOPAY-NETFLIX COM-NETFLIXUPI.PAYU@HDFCBANK-HDFC0MERUPI-103606455749-MONTHLY AUTOPAY. C",
+    "match_type": "contains",
+    "category": "Entertainment",
+    "remark": "Subscription Fee"
+  },
+  {
+    "pattern": "UPI-BALAGANESH VENKATESA-PAYTMQR6SDFE4@PTYS-YESB0PTMUPI-126876626588-UPI",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Peer Payment"
+  },
+  {
+    "pattern": "UPI-BHARATHI STORE-MSWIPE.1400011325000522@INDIANBK-IDIB000M002-646045481837-FOOD",
+    "match_type": "contains",
+    "category": "Shopping",
+    "remark": "Grocery Store"
+  },
+  {
+    "pattern": "UPI-DHRITIMAN  GOSWAMI-DHRITIMANGOSWAMI05@OKSBI-SBIN0000211-619292775531-UPI",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Peer Payment"
+  },
+  {
+    "pattern": "UPI-ENZO SHOP-PAYTMQR6II43S@PTYS-YESB0PTMUPI-490314646935-PAYMENT TO PAYTMQR",
+    "match_type": "contains",
+    "category": "Shopping",
+    "remark": "Retail Purchase"
+  },
+  {
+    "pattern": "UPI-ENZO SHOP-PAYTMQR6II43S@PTYS-YESB0PTMUPI-518218886388-PAYMENT TO PAYTMQR",
+    "match_type": "contains",
+    "category": "Shopping",
+    "remark": "Retail Purchase"
+  },
+  {
+    "pattern": "UPI-FDINOX-PAYTM.D19384955070@PTY-YESB0MCHUPI-126539470515-UPI",
+    "match_type": "contains",
+    "category": "Entertainment",
+    "remark": "INOX Movie"
+  },
+  {
+    "pattern": "UPI-FOR ALL MAART-PAYTM.S1GQCBF@PTY-YESB0MCHUPI-126496081934-UPI",
+    "match_type": "contains",
+    "category": "Shopping",
+    "remark": "Store Purchase"
+  },
+  {
+    "pattern": "UPI-GIRRAJ YADAV-GIRRAJ001Y@OKAXIS-PUNB0083010-126461632993-UPI",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Peer Payment"
+  },
+  {
+    "pattern": "UPI-M ARUNKUMAR-PAYTMQR6UF3WG@PTYS-YESB0PTMUPI-125901240612-UPI",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Peer Payment"
+  },
+  {
+    "pattern": "UPI-M ARUNKUMAR-PAYTMQR6UF3WG@PTYS-YESB0PTMUPI-125965534687-UPI",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Peer Payment"
+  },
+  {
+    "pattern": "UPI-M ARUNKUMAR-PAYTMQR6UF3WG@PTYS-YESB0PTMUPI-126651895521-UPI",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Peer Payment"
+  },
+  {
+    "pattern": "UPI-M ARUNKUMAR-PAYTMQR6UF3WG@PTYS-YESB0PTMUPI-126726986549-UPI",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Peer Payment"
+  },
+  {
+    "pattern": "UPI-M ARUNKUMAR-PAYTMQR6UF3WG@PTYS-YESB0PTMUPI-126857086268-UPI",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Peer Payment"
+  },
+  {
+    "pattern": "UPI-M ARUNKUMAR-PAYTMQR6UF3WG@PTYS-YESB0PTMUPI-628174905849-PAYMENT TO PAYTMQR",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Peer Payment"
+  },
+  {
+    "pattern": "UPI-MASTER NEELAKSH  SAX-NEELAKSH7.SAXENA@OKAXIS-CBIN0280139-619762025040-UPI",
+    "match_type": "contains",
+    "category": "Self Transfer",
+    "remark": "Inter-bank Self Transfer"
+  },
+  {
+    "pattern": "UPI-MASTER NEELAKSH  SAX-NEELAKSH7.SAXENA@OKAXIS-CBIN0280139-621116891801-UPI",
+    "match_type": "contains",
+    "category": "Self Transfer",
+    "remark": "Inter-bank Self Transfer"
+  },
+  {
+    "pattern": "UPI-MASTER NEELAKSH  SAX-NEELAKSH7.SAXENA@OKAXIS-CBIN0280139-655008578972-UPI",
+    "match_type": "contains",
+    "category": "Self Transfer",
+    "remark": "Inter-bank Self Transfer"
+  },
+  {
+    "pattern": "UPI-MASTER NEELAKSH  SAX-NEELAKSH7.SAXENA@OKAXIS-CBIN0280139-657075516857-UPI",
+    "match_type": "contains",
+    "category": "Self Transfer",
+    "remark": "Inter-bank Self Transfer"
+  },
+  {
+    "pattern": "UPI-MASTER NEELAKSH  SAX-NEELAKSH7.SAXENA@OKICICI-CBIN0280139-654989313567-UPI",
+    "match_type": "contains",
+    "category": "Self Transfer",
+    "remark": "Inter-bank Self Transfer"
+  },
+  {
+    "pattern": "UPI-MASTER NEELAKSH  SAX-NEELAKSH7.SAXENA@OKSBI-CBIN0280139-620889230644-UPI",
+    "match_type": "contains",
+    "category": "Self Transfer",
+    "remark": "Inter-bank Self Transfer"
+  },
+  {
+    "pattern": "UPI-NIRMALA  CHANDRU-SATHISH42000SK@OKICICI-SBIN0018714-061531716191-PAYMENT TO SATHISH",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Peer Payment"
+  },
+  {
+    "pattern": "UPI-NSE ZERODHA COINS-ZERODHA.NSEINVEST.BRK@VALIDHDFC-HDFC0MERUPI-103565154128-OU0J2UGGYAOQQ95B5D",
+    "match_type": "contains",
+    "category": "Investments",
+    "remark": "Mutual Fund Purchase"
+  },
+  {
+    "pattern": "UPI-NSE ZERODHA COINS-ZERODHA.NSEINVEST.BRK@VALIDHDFC-HDFC0MERUPI-103565171658-0T6ZG8JWJHMJ5YUYEU",
+    "match_type": "contains",
+    "category": "Investments",
+    "remark": "Mutual Fund Purchase"
+  },
+  {
+    "pattern": "UPI-NSE ZERODHA COINS-ZERODHA.NSEINVEST.BRK@VALIDHDFC-HDFC0MERUPI-103565259148-O7LCVVXVYMAHCMNFFN",
+    "match_type": "contains",
+    "category": "Investments",
+    "remark": "Mutual Fund Purchase"
+  },
+  {
+    "pattern": "UPI-QB QUICK BITES-PAYTM.S1XTXS0@PTY-YESB0MCHUPI-126224839339-UPI",
+    "match_type": "contains",
+    "category": "Food",
+    "remark": "Quick Service Food"
+  },
+  {
+    "pattern": "UPI-QB QUICK BITES-PAYTM.S1XTY3V@PTY-YESB0MCHUPI-953493084343-PAYMENT TO PAYTM S",
+    "match_type": "contains",
+    "category": "Food",
+    "remark": "Quick Service Food"
+  },
+  {
+    "pattern": "UPI-RANJEET KUMAR-BHARATPE9C0C7S3Z0N310731@YESBANKLTD-YESB0YESUPI-126897978679-PAY TO BHARATPE ME",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Peer Payment"
+  },
+  {
+    "pattern": "UPI-RHEMA TRANSPORT-PAYTM.S1I6LR8@PTY-YESB0MCHUPI-126877581858-UPI",
+    "match_type": "contains",
+    "category": "Travel",
+    "remark": "Transport Service"
+  },
+  {
+    "pattern": "UPI-RHEMA TRANSPORT-PAYTM.S1I6LRA@PTY-YESB0MCHUPI-126908107057-UPI",
+    "match_type": "contains",
+    "category": "Travel",
+    "remark": "Transport Service"
+  },
+  {
+    "pattern": "UPI-RHEMA TRANSPORT-PAYTM.S1I6M2X@PTY-YESB0MCHUPI-126540463917-UPI",
+    "match_type": "contains",
+    "category": "Travel",
+    "remark": "Transport Service"
+  },
+  {
+    "pattern": "UPI-S DIWAKAR-GPAY-12190110443@OKBIZAXIS-UTIB0000553-125802564302-UPI",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Payment to Individual"
+  },
+  {
+    "pattern": "UPI-S DIWAKAR-GPAY-12190110443@OKBIZAXIS-UTIB0000553-125802685690-UPI",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Payment to Individual"
+  },
+  {
+    "pattern": "UPI-S DIWAKAR-GPAY-12190110443@OKBIZAXIS-UTIB0000553-718373226210-PAYMENT TO GPAY 12",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Payment to Individual"
+  },
+  {
+    "pattern": "UPI-SEMOLINA KITCHEN PRI-SBIPMOPAD.02PL00000665705-21584232@SBIPAY-SBIP0123456-125670987065-UPI",
+    "match_type": "contains",
+    "category": "Food",
+    "remark": "Food Order"
+  },
+  {
+    "pattern": "UPI-SIDDHARTH SINGH-SIDDHARTHSINGH90909@OKICICI-PUNB0952500-126192620330-UPI",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Peer Payment"
+  },
+  {
+    "pattern": "UPI-SNAPMINT CREDIT ADVI-SNAPMINT.PAYU@AXISBANK-UTIB0003156-967408201926-UPI TRANSACTION",
+    "match_type": "contains",
+    "category": "Shopping",
+    "remark": "Credit Payment"
+  },
+  {
+    "pattern": "UPI-SNEH SINGH MINOR-22SNEHS@OKICICI-ICIC0000310-655876803443-UPI",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Peer Payment"
+  },
+  {
+    "pattern": "UPI-SREE BALAJI STORES-VYAPAR.170119992600@HDFCBANK-HDFC0MERUPI-856348553640-PAYMENT TO VYAPAR",
+    "match_type": "contains",
+    "category": "Shopping",
+    "remark": "Grocery Store"
+  },
+  {
+    "pattern": "UPI-SREE RAJA RAJESHWARI-VYAPAR.172721067024@HDFCBANK-HDFC0MERUPI-126566648622-UPI",
+    "match_type": "contains",
+    "category": "Shopping",
+    "remark": "Store Purchase"
+  },
+  {
+    "pattern": "UPI-SREE RAJA RAJESHWARI-VYAPAR.172721067024@HDFCBANK-HDFC0MERUPI-126810756768-UPI",
+    "match_type": "contains",
+    "category": "Shopping",
+    "remark": "Store Purchase"
+  },
+  {
+    "pattern": "UPI-SUGUMAR MUNIRATHINAM-GPAY-11265597745@OKBIZAXIS-UTIB0000553-126819626780-UPI",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Peer Payment"
+  },
+  {
+    "pattern": "UPI-SUGUMAR MUNIRATHINAM-GPAY-11265597745@OKBIZAXIS-UTIB0000553-656045296884-UPI",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Peer Payment"
+  },
+  {
+    "pattern": "UPI-TASTE ON WHEEL-YESPAY.BIZS.BIZ11173.TER3@YESBANKLTD-YESB0YESUPI-125601916015-UPI",
+    "match_type": "contains",
+    "category": "Food",
+    "remark": "Dining Out"
+  },
+  {
+    "pattern": "UPI-VALVE CORPORATION-VALVECORPORATIO369895.RZP@RXAXIS-UTIB0000RZP-619021305668-UPI PAYMENT",
+    "match_type": "contains",
+    "category": "Entertainment",
+    "remark": "Video Games"
+  },
+  {
+    "pattern": "UPI-VIGNESH  SAKTHIVEL-MSVIGNESHVICKY85472-2@OKSBI-SBIN0007126-618471425171-UPI",
+    "match_type": "contains",
+    "category": "Family & Personal",
+    "remark": "Peer Payment"
   }
 ]

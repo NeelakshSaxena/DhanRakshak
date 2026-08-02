@@ -1,4 +1,4 @@
-﻿# processor.py
+# processor.py
 # This file contains the core logic for processing the bank statement.
 # This version conditionally imports the correct AI enricher.
 
@@ -107,23 +107,21 @@ def load_data(uploaded_file):
     if df.empty:
         raise ValueError("Pandas parsed the file, but no valid data rows were found.")
 
-    rename_map = {}
+    df.attrs['original_columns'] = list(df.columns)
+    
+    # Create normalized columns instead of renaming to preserve original columns for export
     for col in df.columns:
         normalized = normalize_column_name(col)
         if normalized:
-            if normalized in rename_map.values():
-                # keep first mapping only
-                continue
-            rename_map[col] = normalized
-
-    df.rename(columns=rename_map, inplace=True)
+            if normalized not in df.columns:
+                df[normalized] = df[col]
 
     needed = ['date', 'narration', 'reference', 'value_date', 'withdrawal_amount', 'deposit_amount', 'closing_balance']
+    
     for col in needed:
         if col not in df.columns:
             df[col] = pd.NA
 
-    df = df[needed]
     df = df[~df[needed].isna().all(axis=1)]
 
     return df
@@ -193,6 +191,8 @@ def statement_df_to_json(df):
 def process_statement(uploaded_file, account_holder_name, ai_provider, api_config):
     """Main processing pipeline - preserves original narration, adds category/remark."""
     df = load_data(uploaded_file)
+    original_cols = df.attrs.get('original_columns', [])
+    
     df = clean_data_types(df)
 
     # preserve legacy names
@@ -203,25 +203,32 @@ def process_statement(uploaded_file, account_holder_name, ai_provider, api_confi
     if 'credit' not in df.columns and 'deposit_amount' in df.columns:
         df['credit'] = df['deposit_amount']
 
-    if ai_provider == 'Gemini API':
-        from gemini_enricher import enrich_with_gemini
-        enriched_data = enrich_with_gemini(df, api_config['key'], account_holder_name)
-    elif ai_provider == 'Local Server':
-        from local_ai_enricher import enrich_with_local_llama
-        enriched_data = enrich_with_local_llama(df, api_config['url'], account_holder_name)
-    else:
-        raise ValueError('Invalid AI Provider specified.')
+    # Check if this is an already processed statement
+    is_pre_processed = 'category' in df.columns
 
-    # Merge enriched data - get category and remark only
-    enriched_df = pd.DataFrame(enriched_data)
-    if enriched_df.shape[0] > 0:
-        # Avoid many-to-many row explosions if description repeats.
-        if 'original_description' in enriched_df.columns:
-            enriched_df = enriched_df.drop_duplicates(subset=['original_description'], keep='last')
-
-        desc_col = 'description' if 'description' in df.columns else 'narration'
-        df = pd.merge(df, enriched_df, left_on=desc_col, right_on='original_description', how='left')
-        df.drop(columns=['original_description'], inplace=True, errors='ignore')
+    if not is_pre_processed:
+        if ai_provider == 'Gemini API':
+            from gemini_enricher import enrich_with_gemini
+            enriched_data = enrich_with_gemini(df, api_config['key'], account_holder_name, api_config.get('model', 'gemini-1.5-flash'))
+        elif ai_provider == 'Local Server':
+            from local_ai_enricher import enrich_with_local_llama
+            enriched_data = enrich_with_local_llama(df, api_config['url'], account_holder_name)
+        elif ai_provider == 'Custom Endpoint':
+            from custom_enricher import enrich_with_custom
+            enriched_data = enrich_with_custom(df, api_config['url'], api_config['key'], account_holder_name)
+        else:
+            raise ValueError('Invalid AI Provider specified.')
+    
+        # Merge enriched data - get category and remark only
+        enriched_df = pd.DataFrame(enriched_data)
+        if enriched_df.shape[0] > 0:
+            # Avoid many-to-many row explosions if description repeats.
+            if 'original_description' in enriched_df.columns:
+                enriched_df = enriched_df.drop_duplicates(subset=['original_description'], keep='last')
+    
+            desc_col = 'description' if 'description' in df.columns else 'narration'
+            df = pd.merge(df, enriched_df, left_on=desc_col, right_on='original_description', how='left')
+            df.drop(columns=['original_description'], inplace=True, errors='ignore')
 
     # Merchant stays as original narration (never blank)
     if 'merchant' not in df.columns:
@@ -240,5 +247,8 @@ def process_statement(uploaded_file, account_holder_name, ai_provider, api_confi
     df = get_payment_method(df)
     df['category'] = df['category'].fillna('Shopping')
     df['remark'] = df['remark'].fillna('')
+    
+    # Restore original_columns attribute as Pandas operations likely dropped it
+    df.attrs['original_columns'] = original_cols
     
     return df
