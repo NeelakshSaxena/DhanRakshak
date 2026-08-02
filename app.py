@@ -94,7 +94,7 @@ def show_loading_animation():
             unsafe_allow_html=True
         )
     else:
-        st.info("Loading... (add loading.gif to src/animations/)")
+        st.info("Loading... (add loading.gif to animations/)")
 
 # --- Sidebar ---
 with st.sidebar:
