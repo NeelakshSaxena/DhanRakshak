@@ -18,23 +18,18 @@ from processor import process_statement
 # --- Page Configuration ---
 st.set_page_config(
     page_title="Dhanrakshak - Expense Analyzer",
-    page_icon="💰",
+    page_icon="D",
     layout="wide"
 )
 
 # --- App Styling ---
 st.markdown("""
 <style>
-    .reportview-container {
-        background: #f0f2f6;
-    }
-    .sidebar .sidebar-content {
-        background: #f0f2f6;
-    }
+    /* Remove hardcoded backgrounds so Streamlit's native Light/Dark theme works */
     .stMetric {
         border-radius: 10px;
         padding: 15px;
-        background-color: #ffffff;
+        background-color: var(--secondary-background-color);
         box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
     }
     .stButton>button {
@@ -69,6 +64,14 @@ def convert_df_to_csv(df):
     # IMPORTANT: Cache the conversion to prevent computation on every rerun
     return df.to_csv(index=False).encode('utf-8')
 
+@st.cache_data
+def convert_df_to_excel(df):
+    import io
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False)
+    return output.getvalue()
+
 
 def show_loading_animation():
     """Display animated loading animation using proper HTML rendering."""
@@ -91,91 +94,22 @@ def show_loading_animation():
             unsafe_allow_html=True
         )
     else:
-        st.info("⏳ Loading... (add loading.gif to src/animations/)")
+        st.info("Loading... (add loading.gif to src/animations/)")
 
 # --- Sidebar ---
 with st.sidebar:
-    st.title("Dhanrakshak 📊")
+    st.title(":blue[Dhanrakshak]")
     st.write("Your personal finance dashboard.")
     
-    st.header("1. AI Configuration")
-    ai_provider = st.radio(
-        "Select AI Provider", 
-        ("Local Server", "Gemini API", "Custom Endpoint"),
-        help="Use a local model for 100% privacy, Google's Gemini API for power, or a custom API endpoint."
-    )
-    
-    api_config = {}
-    if ai_provider == "Local Server":
-        api_config['url'] = st.text_input("Local Server URL", "http://localhost:1234/v1/chat/completions")
-    elif ai_provider == "Custom Endpoint":
-        api_config['url'] = st.text_input("Custom Endpoint URL", "https://api.runpod.ai/v2/your-id/runsync")
-        api_config['key'] = st.text_input("Custom API Key (Bearer)", type="password")
-    else: # Gemini API
-        api_key_input = st.text_input("Gemini API Key", type="password")
-        if api_key_input:
-            api_config['key'] = api_key_input
-            
-            # Fetch available models
-            try:
-                import requests
-                response = requests.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key_input}")
-                if response.status_code == 200:
-                    models = [m['name'].split('/')[-1] for m in response.json().get('models', []) if 'generateContent' in m.get('supportedGenerationMethods', []) and '2.5' not in m['name']]
-                    
-                    if models:
-                        # Select box for model, defaulting to gemini-1.5-flash if available
-                        default_index = models.index('gemini-1.5-flash') if 'gemini-1.5-flash' in models else 0
-                        selected_model = st.selectbox("Select Gemini Model", models, index=default_index)
-                        api_config['model'] = selected_model
-                    else:
-                        st.warning("No suitable models found for this API key.")
-                        api_config['model'] = "gemini-1.5-flash" # Fallback
-                else:
-                    st.error(f"Error fetching models: {response.status_code}")
-                    api_config['model'] = "gemini-1.5-flash" # Fallback
-            except Exception as e:
-                st.error(f"Could not fetch models: {e}")
-                api_config['model'] = "gemini-1.5-flash" # Fallback
-
-    st.header("2. Your Information")
-    account_holder_name = st.text_input("Your Full Name (as in statement)", value="Neelaksh Saxena", help="This helps identify self-transfers accurately.")
-
-    st.header("3. Upload Statement")
-    uploaded_file = st.file_uploader(
-        "Upload your bank statement (.txt or .csv)",
-        type=['txt', 'csv'],
-        key="file_uploader"
-    )
-
-    # If a new file is uploaded, store it and clear old results/errors
-    if uploaded_file is not None:
-        if st.session_state.get('uploaded_file_obj') is None or uploaded_file.name != st.session_state.uploaded_file_obj.name:
-            st.session_state.uploaded_file_obj = uploaded_file
-            st.session_state.processed_data = None
-            st.session_state.edited_data = None
-            st.session_state.error_message = None
-
-    # If a file is ready, show its name and the "Process" button
-    if st.session_state.get('uploaded_file_obj') is not None:
-        st.success(f"File '{st.session_state.uploaded_file_obj.name}' ready.")
-        if st.button("Process Statement", type="primary"):
-            st.session_state.processing = True
-            st.session_state.error_message = None
-            st.session_state.processed_data = None
-            st.rerun() # Rerun to show the loading GIF
-
     if st.session_state.get('processed_data') is not None or st.session_state.get('error_message') is not None:
+        st.markdown("---")
         if st.button("Clear Data and Start Over"):
-            # Clear all relevant session state keys
-            for key in ['processed_data', 'edited_data', 'uploaded_file_obj', 'error_message', 'processing']:
+            for key in ['processed_data', 'edited_data', 'uploaded_file_obj', 'error_message', 'processing', 'api_config_state', 'ai_provider_state', 'name_state', 'skip_ai_state']:
                 if key in st.session_state:
                     del st.session_state[key]
             st.rerun()
 
 # --- Main Page Display ---
-
-# This container will hold animations or the welcome message
 main_placeholder = st.empty()
 
 if st.session_state.get('processing'):
@@ -183,7 +117,18 @@ if st.session_state.get('processing'):
         show_loading_animation()
     
     try:
-        df = process_statement(st.session_state.uploaded_file_obj, account_holder_name, ai_provider, api_config)
+        force_skip = st.session_state.get('skip_ai_state', False)
+        raw_val = st.session_state.get('raw_scrubbed_text')
+        payload = raw_val if raw_val is not None else st.session_state.uploaded_file_obj
+        
+        df = process_statement(
+            payload, 
+            st.session_state.get('name_state', 'User'), 
+            st.session_state.get('ai_provider_state'), 
+            st.session_state.get('api_config_state', {}),
+            force_skip_ai=force_skip,
+            use_ai_mapper=st.session_state.get('use_ai_mapper_state', False)
+        )
         st.session_state.processed_data = df
         st.session_state.original_columns = df.attrs.get('original_columns', [])
         st.session_state.edited_data = df.copy()
@@ -193,8 +138,11 @@ if st.session_state.get('processing'):
         with main_placeholder.container():
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
-                st.success("✅ Analysis complete!")
-        time.sleep(1)
+                if df.attrs.get('is_pre_processed'):
+                    st.success("Edited file detected! Skipped AI processing and loaded your data instantly.")
+                else:
+                    st.success("Analysis complete!")
+        time.sleep(1.5)
         st.rerun()
 
     except Exception as e:
@@ -207,21 +155,140 @@ elif st.session_state.get('error_message'):
     with main_placeholder.container():
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            st.error("⚠️ An error occurred")
+            st.error("An error occurred")
         st.error(f"{st.session_state.error_message}")
-        st.warning("Please check your settings on the left and try again.")
+        st.warning("Please check your settings or clear data to try again.")
 
 elif st.session_state.get('processed_data') is None:
+    # --- SETUP SCREEN ---
     with main_placeholder.container():
-        st.header("Welcome to Dhanrakshak!")
+        st.header("Welcome to :blue[Dhanrakshak]!")
         st.subheader("Analyze Your Finances Intelligently")
-        st.markdown("""
-        **Get started in 3 simple steps:**
+        st.markdown("---")
+        
+        col1, col2 = st.columns(2, gap="large")
+        
+        with col1:
+            st.header("1. Upload Statement")
+            
+            statement_type = st.radio(
+                "Statement Type",
+                ["Raw Bank Statement (Run AI)", "Previously Edited Statement (Visualize Only)"],
+                help="Choose whether you need the AI to analyze new data, or if you just want to visualize a statement you already edited and downloaded."
+            )
+            force_skip_ai = statement_type == "Previously Edited Statement (Visualize Only)"
+            
+            uploaded_file = st.file_uploader(
+                "Upload your bank statement (.csv, .xlsx, .xls)",
+                type=['csv', 'xlsx', 'xls'],
+                key="file_uploader"
+            )
+            
+            use_ai_mapper = st.checkbox(
+                "Use AI to understand unfamiliar statement format", 
+                value=False, 
+                help="Check this if the app fails to read your bank statement. It will use AI to figure out the column names.",
+                disabled=force_skip_ai
+            )
+            
+            account_holder_name = st.text_input("Your Full Name (as in statement)", value="Neelaksh Saxena", help="This helps identify self-transfers accurately.")
+            
+        with col2:
+            st.header("2. AI Configuration")
+            ai_provider = st.radio(
+                "Select AI Provider", 
+                ("Local Server", "Gemini API", "Custom Endpoint"),
+                help="Use a local model for 100% privacy, Google's Gemini API for power, or a custom API endpoint."
+            )
+            
+            api_config = {}
+            if ai_provider == "Local Server":
+                api_config['url'] = st.text_input("Local Server URL", "http://localhost:1234/v1/chat/completions")
+            elif ai_provider == "Custom Endpoint":
+                api_config['url'] = st.text_input("Custom Endpoint URL", "https://api.runpod.ai/v2/your-id/runsync")
+                api_config['key'] = st.text_input("Custom API Key (Bearer)", type="password")
+            else: # Gemini API
+                api_key_input = st.text_input("Gemini API Key", type="password")
+                if api_key_input:
+                    api_config['key'] = api_key_input
+                    try:
+                        import requests
+                        response = requests.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key_input}")
+                        if response.status_code == 200:
+                            models = [m['name'].split('/')[-1] for m in response.json().get('models', []) if 'generateContent' in m.get('supportedGenerationMethods', []) and '2.5' not in m['name']]
+                            if models:
+                                default_index = models.index('gemini-1.5-flash') if 'gemini-1.5-flash' in models else 0
+                                selected_model = st.selectbox("Select Gemini Model", models, index=default_index)
+                                api_config['model'] = selected_model
+                            else:
+                                st.warning("No suitable models found for this API key.")
+                                api_config['model'] = "gemini-1.5-flash"
+                        else:
+                            st.error(f"Error fetching models: {response.status_code}")
+                            api_config['model'] = "gemini-1.5-flash"
+                    except Exception as e:
+                        st.error(f"Could not fetch models: {e}")
+                        api_config['model'] = "gemini-1.5-flash"
+        
+        st.markdown("---")
+        
+        # If a new file is uploaded, store it
+        if uploaded_file is not None:
+            if st.session_state.get('uploaded_file_obj') is None or uploaded_file.name != st.session_state.uploaded_file_obj.name:
+                st.session_state.uploaded_file_obj = uploaded_file
+                st.session_state.error_message = None
+                
+                is_excel = uploaded_file.name.lower().endswith(('.xlsx', '.xls'))
+                
+                if is_excel:
+                    st.session_state.raw_scrubbed_text = None
+                else:
+                    # Pre-read the file for the privacy scrub step
+                    try:
+                        uploaded_file.seek(0)
+                        raw_content = uploaded_file.getvalue().decode('utf-8')
+                    except (UnicodeDecodeError, AttributeError):
+                        uploaded_file.seek(0)
+                        raw_content = uploaded_file.getvalue().decode('latin-1')
+                    st.session_state.raw_scrubbed_text = raw_content
+                
+            st.success(f"File '{uploaded_file.name}' ready.")
+            
+            is_excel_mode = uploaded_file.name.lower().endswith(('.xlsx', '.xls'))
+            
+            if is_excel_mode:
+                st.markdown("### 3. Processing Options")
+                st.info("Excel files are structured automatically. Privacy Scrub is disabled for binary formats.")
+                confirm_scrub = True
+                scrubbed_text = None
+            else:
+                st.markdown("### 3. Privacy Scrub (Mandatory)")
+                st.warning("Review the raw data below. You MUST manually delete any sensitive information (like your address or account number) before processing.")
+                
+                scrubbed_text = st.text_area(
+                    "Raw File Contents", 
+                    value=st.session_state.get('raw_scrubbed_text', ''), 
+                    height=250,
+                    key="scrubbed_text_area",
+                    help="Edit the text here. Deleting rows from the top won't affect the processor as long as the main table remains."
+                )
+                
+                confirm_scrub = st.checkbox("I confirm that I have reviewed the text and removed any sensitive information.")
+            
+            col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+            with col_btn2:
+                if st.button("Confirm & Process", type="primary", use_container_width=True, disabled=not confirm_scrub):
+                    # Save UI state
+                    st.session_state.raw_scrubbed_text = scrubbed_text
+                    st.session_state.api_config_state = api_config
+                    st.session_state.ai_provider_state = ai_provider
+                    st.session_state.name_state = account_holder_name
+                    st.session_state.skip_ai_state = force_skip_ai
+                    st.session_state.use_ai_mapper_state = use_ai_mapper
+                    
+                    st.session_state.processing = True
+                    st.rerun()
 
-        1.  Configure your AI Provider and enter your name on the left.
-        2.  Upload your statement.
-        3.  Click 'Process Statement' to begin the analysis.
-        """)
 else:
     # --- Dashboard View ---
     df = st.session_state.processed_data
@@ -286,7 +353,7 @@ else:
             )
             fig_pie.update_traces(textposition='inside', textinfo='percent+label', pull=[0.05 if i == 0 else 0 for i in range(len(expense_by_category))])
             fig_pie.update_layout(legend_title_text='Categories', title_x=0.5)
-            st.plotly_chart(fig_pie, use_container_width=True)
+            st.plotly_chart(fig_pie, use_container_width=True, theme="streamlit")
 
         with col2:
             payment_method_expenses = expense_df.groupby('payment_method')['debit'].sum().sort_values(ascending=True).reset_index()
@@ -296,7 +363,7 @@ else:
                 orientation='h', text_auto='.2s'
             )
             fig_bar.update_layout(title_x=0.5, yaxis_title=None)
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.plotly_chart(fig_bar, use_container_width=True, theme="streamlit")
             
         daily_expenses = expense_df.groupby('date')['debit'].sum().reset_index()
         fig_line = px.line(
@@ -305,7 +372,7 @@ else:
             markers=True
         )
         fig_line.update_layout(title_x=0.5)
-        st.plotly_chart(fig_line, use_container_width=True)
+        st.plotly_chart(fig_line, use_container_width=True, theme="streamlit")
 
         col3, col4 = st.columns(2)
         with col3:
@@ -325,7 +392,7 @@ else:
                 text_auto='.2s'
             )
             fig_top_merchants.update_layout(title_x=0.5, yaxis={'categoryorder': 'total ascending'})
-            st.plotly_chart(fig_top_merchants, use_container_width=True)
+            st.plotly_chart(fig_top_merchants, use_container_width=True, theme="streamlit")
 
         with col4:
             income_vs_expense = pd.DataFrame(
@@ -344,7 +411,7 @@ else:
                 text_auto='.2s'
             )
             fig_income_expense.update_layout(title_x=0.5, showlegend=False)
-            st.plotly_chart(fig_income_expense, use_container_width=True)
+            st.plotly_chart(fig_income_expense, use_container_width=True, theme="streamlit")
 
         # Use Streamlit columns to display the two charts side by side
         chart_col1, chart_col2 = st.columns(2)
@@ -368,7 +435,7 @@ else:
                     )
                     fig_tx_split.update_traces(textposition='inside', textinfo='percent+label')
                     fig_tx_split.update_layout(title_x=0.5)
-                    st.plotly_chart(fig_tx_split, use_container_width=True)
+                    st.plotly_chart(fig_tx_split, use_container_width=True, theme="streamlit")
 
         with chart_col2:
             if 'transaction_mode' in expense_df.columns:
@@ -384,7 +451,7 @@ else:
                         text_auto='.2s'
                     )
                     fig_mode_spend.update_layout(title_x=0.5, yaxis={'categoryorder': 'total ascending'})
-                    st.plotly_chart(fig_mode_spend, use_container_width=True)
+                    st.plotly_chart(fig_mode_spend, use_container_width=True, theme="streamlit")
 
         balance_curve_df = viz_df.dropna(subset=['date_dt']).copy()
         if 'closing_balance' in balance_curve_df.columns:
@@ -400,7 +467,7 @@ else:
                     labels={'date_dt': 'Date', 'closing_balance': 'Closing Balance (₹)'}
                 )
                 fig_balance_curve.update_layout(title_x=0.5)
-                st.plotly_chart(fig_balance_curve, use_container_width=True)
+                st.plotly_chart(fig_balance_curve, use_container_width=True, theme="streamlit")
 
     st.markdown("---")
     st.header("Transaction Details")
@@ -475,13 +542,23 @@ else:
     if not original_name.endswith('.csv'):
         original_name += '.csv'
 
-    st.download_button(
-        label="Download Updated Statement",
-        data=convert_df_to_csv(export_df),
-        file_name=f"edited_{original_name}",
-        mime="text/csv",
-        help="Saves your edited remarks to a new CSV file."
-    )
+    col_dl1, col_dl2 = st.columns(2)
+    with col_dl1:
+        st.download_button(
+            label="Download as CSV",
+            data=convert_df_to_csv(export_df),
+            file_name=f"edited_{original_name}",
+            mime="text/csv",
+            help="Saves your edited remarks to a new CSV file."
+        )
+    with col_dl2:
+        st.download_button(
+            label="Download as Excel (.xlsx)",
+            data=convert_df_to_excel(export_df),
+            file_name=f"edited_{original_name.replace('.csv', '.xlsx')}",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            help="Saves your edited remarks to a new Excel file."
+        )
 
     st.markdown("---")
     st.header("Teach The App New Narration Rules")

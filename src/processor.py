@@ -29,6 +29,11 @@ def detect_delimiter(sample_text):
     best = max(counts, key=counts.get)
     if counts[best] > 0:
         return best
+        
+    # If standard delimiters aren't found, check for fixed-width (multiple spaces)
+    if sample_text.count('  ') > 5:
+        return 'fwf'
+        
     return ','
 
 
@@ -70,57 +75,127 @@ def normalize_column_name(col_name):
     return None
 
 
-def load_data(uploaded_file):
-    """Loads data from an uploaded text file (.txt, .csv) and normalizes columns."""
-    try:
-        uploaded_file.seek(0)
-        raw_text = uploaded_file.getvalue().decode('utf-8')
-    except (UnicodeDecodeError, AttributeError):
-        uploaded_file.seek(0)
-        raw_text = uploaded_file.getvalue().decode('latin-1')
-    except Exception as e:
-        raise ValueError(f"Failed to read the text file. Error: {e}")
-
-    lines = [l.strip() for l in raw_text.strip().splitlines() if l.strip()]
-    if not lines:
-        raise ValueError("Uploaded file is empty or only whitespace.")
-
-    header_row_index = find_header_row(lines)
-    if header_row_index == -1:
-        raise ValueError("Could not automatically find the transaction header row within the text file.")
-
-    sample_text = '\n'.join(lines[header_row_index:header_row_index + 5])
-    delimiter = detect_delimiter(sample_text)
-
-    table_text = '\n'.join(lines[header_row_index:])
-    try:
-        df = pd.read_csv(
-            io.StringIO(table_text),
-            sep=delimiter,
-            engine='python',
-            skipinitialspace=True,
-            on_bad_lines='warn'
-        )
-    except Exception as e:
-        raise ValueError(f"Pandas failed to parse the file. Error: {e}")
+def load_data(file_or_text, use_ai_mapper=False, ai_provider=None, api_config=None):
+    """Loads data from an uploaded text file (.txt, .csv) or raw text string, and normalizes columns."""
+    is_excel = hasattr(file_or_text, 'name') and file_or_text.name.lower().endswith(('.xlsx', '.xls'))
+    
+    if is_excel:
+        try:
+            file_or_text.seek(0)
+            temp_df = pd.read_excel(file_or_text, header=None)
+            lines = temp_df.apply(lambda row: ' '.join(row.dropna().astype(str)), axis=1).tolist()
+            header_row_index = find_header_row(lines)
+            
+            if header_row_index == -1:
+                if use_ai_mapper:
+                    header_row_index = 0
+                else:
+                    raise ValueError("Could not automatically find the transaction header row in the Excel file.")
+            
+            file_or_text.seek(0)
+            df = pd.read_excel(file_or_text, header=header_row_index)
+            sample_text = df.head(5).to_csv(index=False)
+        except Exception as e:
+            raise ValueError(f"Failed to parse the Excel file. Error: {e}")
+            
+    else:
+        if isinstance(file_or_text, str):
+            raw_text = file_or_text
+        elif hasattr(file_or_text, 'getvalue'):
+            file_or_text.seek(0)
+            try:
+                raw_text = file_or_text.getvalue().decode('utf-8')
+            except UnicodeDecodeError:
+                file_or_text.seek(0)
+                raw_text = file_or_text.getvalue().decode('latin-1')
+        else:
+            raise ValueError(f"Input to load_data must be a string or a file-like object, got {type(file_or_text)}")
+    
+        lines = [l.strip() for l in raw_text.strip().splitlines() if l.strip()]
+        if not lines:
+            raise ValueError("Uploaded file is empty or only whitespace.")
+    
+        header_row_index = find_header_row(lines)
+        if header_row_index == -1:
+            if use_ai_mapper:
+                header_row_index = 0
+            else:
+                raise ValueError("Could not automatically find the transaction header row within the text file.")
+    
+        sample_text = '\n'.join(lines[header_row_index:header_row_index + 5])
+        delimiter = detect_delimiter(sample_text)
+    
+        table_text = '\n'.join(lines[header_row_index:])
+        try:
+            if delimiter == 'fwf':
+                df = pd.read_fwf(
+                    io.StringIO(table_text),
+                    skipinitialspace=True
+                )
+            else:
+                df = pd.read_csv(
+                    io.StringIO(table_text),
+                    sep=delimiter,
+                    engine='python',
+                    skipinitialspace=True,
+                    on_bad_lines='warn'
+                )
+        except Exception as e:
+            raise ValueError(f"Pandas failed to parse the CSV/Text file. Error: {e}")
 
     if df.empty:
         raise ValueError("Pandas parsed the file, but no valid data rows were found.")
 
     df.attrs['original_columns'] = list(df.columns)
     
-    # Create normalized columns instead of renaming to preserve original columns for export
-    for col in df.columns:
-        normalized = normalize_column_name(col)
-        if normalized:
-            if normalized not in df.columns:
-                df[normalized] = df[col]
-
     needed = ['date', 'narration', 'reference', 'value_date', 'withdrawal_amount', 'deposit_amount', 'closing_balance']
     
+    mapping_applied = False
+    
+    # Try AI Mapping first if requested
+    if use_ai_mapper and ai_provider and api_config:
+        st.info("🧠 Asking AI to understand the statement format...")
+        from ai_schema_mapper import get_ai_column_mapping
+        ai_mapping = get_ai_column_mapping(sample_text, ai_provider, api_config)
+        if ai_mapping:
+            for orig_col, target_col in ai_mapping.items():
+                # Fuzzy match column name in case AI slightly hallucinates whitespace
+                matched_cols = [c for c in df.columns if c.strip().lower() == str(orig_col).strip().lower()]
+                if matched_cols and target_col in needed:
+                    df[target_col] = df[matched_cols[0]]
+                    mapping_applied = True
+            if mapping_applied:
+                st.success("✅ AI successfully mapped the statement columns!")
+    
+    # Fallback to dictionary matching if AI wasn't used or failed
+    if not mapping_applied:
+        for col in df.columns:
+            normalized = normalize_column_name(col)
+            if normalized:
+                if normalized not in df.columns:
+                    df[normalized] = df[col]
+
     for col in needed:
         if col not in df.columns:
             df[col] = pd.NA
+
+    # --- Wrapped Row Merging Logic ---
+    # In FWF, wrapped lines usually have no Date, but they do have Narration text.
+    if 'date' in df.columns and 'narration' in df.columns:
+        # A main row is one that has a date
+        is_main_row = df['date'].notna() & (df['date'].astype(str).str.strip() != '') & (df['date'].astype(str).str.strip().str.lower() != 'nan')
+        if not is_main_row.all() and is_main_row.any():
+            # Group ID increments on every main row
+            df['group_id'] = is_main_row.cumsum()
+            
+            # Filter out any garbage rows before the first valid date (group_id = 0)
+            df = df[df['group_id'] > 0]
+            
+            # Aggregate: Take first non-null for most columns, but join text for narration
+            agg_funcs = {col: 'first' for col in df.columns if col not in ['group_id', 'narration']}
+            agg_funcs['narration'] = lambda x: ' '.join(x.dropna().astype(str).str.strip())
+            
+            df = df.groupby('group_id').agg(agg_funcs).reset_index(drop=True)
 
     df = df[~df[needed].isna().all(axis=1)]
 
@@ -188,9 +263,9 @@ def statement_df_to_json(df):
     return json.dumps(records, ensure_ascii=False, indent=2)
 
 
-def process_statement(uploaded_file, account_holder_name, ai_provider, api_config):
+def process_statement(uploaded_file, account_holder_name, ai_provider, api_config, force_skip_ai=False, use_ai_mapper=False):
     """Main processing pipeline - preserves original narration, adds category/remark."""
-    df = load_data(uploaded_file)
+    df = load_data(uploaded_file, use_ai_mapper=use_ai_mapper, ai_provider=ai_provider, api_config=api_config)
     original_cols = df.attrs.get('original_columns', [])
     
     df = clean_data_types(df)
@@ -203,8 +278,8 @@ def process_statement(uploaded_file, account_holder_name, ai_provider, api_confi
     if 'credit' not in df.columns and 'deposit_amount' in df.columns:
         df['credit'] = df['deposit_amount']
 
-    # Check if this is an already processed statement
-    is_pre_processed = 'category' in df.columns
+    # Check if this is an already processed statement or user forces skip
+    is_pre_processed = force_skip_ai or ('category' in df.columns)
 
     if not is_pre_processed:
         if ai_provider == 'Gemini API':
@@ -250,5 +325,6 @@ def process_statement(uploaded_file, account_holder_name, ai_provider, api_confi
     
     # Restore original_columns attribute as Pandas operations likely dropped it
     df.attrs['original_columns'] = original_cols
+    df.attrs['is_pre_processed'] = is_pre_processed
     
     return df
